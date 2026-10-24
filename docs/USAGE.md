@@ -271,7 +271,31 @@ SKIP_SHELL=1 NODE=<node22+> sh test/run.sh  # 只跑单元
 
 ---
 
-## 10. 安全提示
+## 10. 仓库与发布
+
+本仓库就是插件本体（本地 `link:` 挂进 profile，不需要发 npm）。
+
+```sh
+git clone https://github.com/TZYCeng/dsh-android-Conversation-sync
+cd dsh-android-Conversation-sync
+# 然后按第 1 节把 profile 指向这个目录
+```
+
+发布新版本：
+
+```sh
+node tools/panel-probe.mjs ~/.dsh        # 先确认面板能渲染
+NODE=<node22+> sh test/run.sh 8733       # 8 套单元 + 真往返
+git add -A && git commit -m "…"
+git push                                 # 走 Windows 凭据管理器，第一次会让授权
+```
+
+- 仓库里**没有任何密钥**；`~/.dsh/.credentials.yaml` 在 DSH home，不在仓库目录。
+- `.gitattributes` 统一 LF（`*.cmd` 例外）。
+
+---
+
+## 11. 安全提示
 
 - 局域网明文 HTTP + 32 位令牌，没有 TLS。别在公共 Wi-Fi 上用。
 - 密钥文件 `.credentials.yaml` 在手机上会被**整份覆盖**；它的内容是电脑上该文件的合并结果。
@@ -281,7 +305,7 @@ SKIP_SHELL=1 NODE=<node22+> sh test/run.sh  # 只跑单元
 
 ---
 
-## 11. 卸载
+## 12. 卸载
 
 从 profile 的 `bundles` 里删掉 `dsh-mobile-sync`，删掉那个 `node_modules` 联接，重启 DSH。
 `~/.dsh/dsh-mobile-sync/`（令牌、手机上报缓存、备份）可以留着，也可以直接删。
