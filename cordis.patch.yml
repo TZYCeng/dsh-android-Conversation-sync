@@ -1,0 +1,11 @@
+# Loader rows contributed by dsh-mobile-sync.
+#
+# One row only: the plugin owns its own LAN listener on a dedicated port, so it
+# never has to widen the DSH web server (which refuses unspecified addresses and
+# carries no server-wide authentication).
+#
+# `id` matches the package name on purpose — the loader treats row ids as global
+# keys, and the store contract compares them against the package's own name.
+- insert:
+    - id: dsh-mobile-sync
+      name: dsh-mobile-sync

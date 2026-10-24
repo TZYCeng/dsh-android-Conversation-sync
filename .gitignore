@@ -1,0 +1,13 @@
+# Test scratch output (the suites use temp dirs, these are accidental leftovers)
+test/*.log
+test/.dbg-*
+*.tmp
+*.bak-mobile-sync
+.bak-*
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

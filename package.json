@@ -1,0 +1,41 @@
+{
+  "name": "dsh-mobile-sync",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Sync DSH sessions, the workspace index, plugins, skills and model groups (one provider at a time) between this desktop and the DeepCode (dsh-mobile) Android app over the LAN, paired by a QR code. Nothing is ticked by default, and a sync starts only when the panel's button is pressed.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "android",
+    "session-sync"
+  ],
+  "license": "MIT",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "mobile",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  }
+}

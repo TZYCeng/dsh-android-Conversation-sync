@@ -1,0 +1,11 @@
+# Everything here is hand-written source and text; keep the checkout byte-stable
+# across Windows and Linux.
+* text=auto eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.cmd text eol=crlf
+thumbs.db -text
+.DS_Store -text
