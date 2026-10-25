@@ -105,6 +105,13 @@ console.log(`listening on ${base}, token=${token.slice(0, 6)}…`)
 await controller.act({ action: 'set-root', which: 'desktop', value: path.join(work, 'desk') })
 await controller.act({ action: 'set-root', which: 'phone', value: '/storage/emulated/0/DSH' })
 
+// Workspace pairing is a per-workspace switch now (the「同步对话」box), so the
+// suite has to tick its own project before anything is expected to travel.
+const tickDemo = { action: 'set-workspace', id: workspaceId, on: true }
+assert.equal((await controller.act(tickDemo)).status, 200)
+assert.equal(controller.status().workspaces.desktop.find(item => item.id === workspaceId).selected, true)
+console.log('ok  a workspace only syncs once its own switch is on')
+
 // --- auth
 const unauthorized = await request(`${base}/api/ping`)
 assert.equal(unauthorized.status, 401)
@@ -188,6 +195,89 @@ assert.deepEqual(phoneWorkspace.sessionIds, [seed.id], 'and lists the session it
 assert.equal(phoneIndex.global.defaultWorkspaceId, Object.keys(phoneIndex.tables.workspaces)[0], 'a default workspace is set')
 console.log(`ok  pull -> ${pulledSessions.length} session under ${phoneSlug}, index registers it`)
 
+// The phone now reports its workspace index; caching it is what lets the panel
+// and the planner see the phone's folders. The report names the desktop
+// workspace it mirrors, which is what its row shows as "incoming" — and the
+// phone side of the project title is what the panel matches.
+const mirroredPhoneIndex = JSON.parse(JSON.stringify(phoneIndex))
+for (const [phoneWorkspaceId, workspace] of Object.entries(mirroredPhoneIndex.tables.workspaces)) {
+  if (workspace.path === phonePath) {
+    // The phone's own copy of a mirrored project carries the project title.
+    mirroredPhoneIndex.tables.workspaces[phoneWorkspaceId] = { ...workspace, title: 'demo' }
+  }
+}
+const mirroredPhoneWorkspaceId = Object.keys(mirroredPhoneIndex.tables.workspaces)
+  .find(id => mirroredPhoneIndex.tables.workspaces[id].path === phonePath)
+await request(`${base}/api/push?t=${token}&device=Pixel%209`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/gzip' },
+  body: pack([
+    { relative: '_meta/phone.env', data: Buffer.from([
+      'device=Pixel 9',
+      'home=/data/user/0/com.dsharnessmobile.shell/files/home/.dsh',
+      'sessions=/data/user/0/com.dsharnessmobile.shell/files/home/.dsh/sessions',
+      'profile=/data/user/0/com.dsharnessmobile.shell/files/home/.dsh/profiles/desktop',
+      'profileName=desktop',
+      '',
+    ].join('\n')), mtime: Date.now() },
+    { relative: '_meta/index.json', data: Buffer.from(JSON.stringify(mirroredPhoneIndex)), mtime: Date.now() },
+  ]),
+})
+const mirroredStatus = controller.status()
+assert.equal(mirroredStatus.workspaces.phoneKnown, true, 'the reported index is cached')
+const demoRow = mirroredStatus.workspaces.desktop.find(item => item.id === workspaceId)
+assert.ok(demoRow !== undefined && demoRow.selected === true, 'the ticked workspace is listed')
+// The desktop row's pairing is what tells the phone row which project feeds it.
+const pairDemo = await controller.act({ action: 'set-workspace-map', desktop: workspaceId, phone: mirroredPhoneWorkspaceId })
+assert.equal(pairDemo.status, 200)
+assert.equal(
+  pairDemo.body.workspaces.phone.some(item => item.title === 'demo' && item.incoming.includes('demo')),
+  true,
+  `the phone folder reports which desktop workspace feeds it: ${JSON.stringify(pairDemo.body.workspaces.phone)}`,
+)
+const demoPhoneRow = pairDemo.body.workspaces.phone.find(item => item.title === 'demo')
+assert.equal(demoPhoneRow?.mapped ?? '', '', 'an implicit desktop→phone pairing is shown only on the desktop row')
+assert.deepEqual(
+  mirroredStatus.workspaces.phone.map(item => item.id).includes(mirroredPhoneWorkspaceId),
+  true,
+  'every reported phone workspace is listed',
+)
+assert.equal(mirroredStatus.workspaces.on, 1, 'and the card counts one ticked workspace')
+console.log('ok  the workspace card joins both machines on the ticked project')
+
+// The phone-workspace list is actionable too: a landing choice stored for one
+// phone project shows up on that phone row, on its own key.
+const otherPhoneId = '0f0f0f0f-1111-4111-8111-0f0f0f0f0f0f'
+const otherPhonePath = '/storage/emulated/0/DSH/other'
+const otherPhoneIndex = JSON.parse(JSON.stringify(phoneIndex))
+otherPhoneIndex.tables.workspaces[otherPhoneId] = {
+  path: otherPhonePath,
+  title: 'other',
+  sessionIds: [],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+}
+otherPhoneIndex.global.workspaceIds.push(otherPhoneId)
+await request(`${base}/api/push?t=${token}&device=Pixel%209`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/gzip' },
+  body: pack([
+    { relative: '_meta/index.json', data: Buffer.from(JSON.stringify(otherPhoneIndex)), mtime: Date.now() },
+  ]),
+})
+const landingAction = await controller.act({ action: 'set-phone-workspace-map', phone: otherPhoneId, desktop: workspaceId })
+assert.equal(landingAction.status, 200)
+const landingRow = landingAction.body.workspaces.phone.find(item => item.id === otherPhoneId)
+assert.equal(landingRow.mapped, workspaceId, 'the phone row carries the desktop workspace chosen for it')
+assert.equal(
+  landingAction.body.sync.workspaceMap[`phone:${otherPhoneId}`],
+  workspaceId,
+  'and it is persisted under its own key',
+)
+const badLanding = await controller.act({ action: 'set-phone-workspace-map', phone: otherPhoneId, desktop: 'missing-workspace' })
+assert.equal(badLanding.status, 400, 'an unknown desktop workspace is refused')
+console.log('ok  a phone workspace can be pointed at a desktop workspace from the panel API')
+
 // --- push: the phone hands back what it received, plus its own metadata
 /** Rewrite the header id of a session log, recompressing only its first frame. */
 function withId(buffer, id) {
@@ -255,6 +345,24 @@ const again = await request(`${base}/api/push?t=${token}&device=Pixel%209`, {
 })
 assert.match(again.text(), /相同 1/, 'identical pushes collapse')
 console.log('ok  repeated push is a no-op')
+
+// --- unticking the workspace stops the outbound direction without deleting
+// anything. (A conversation this machine already holds still comes home: the
+// phone mirror of a desktop session reports "相同", not an import, so the
+// switch has nothing to hold back there.)
+await controller.act({ action: 'set-workspace', id: workspaceId, on: false })
+const untickedPull = unpack((await request(`${base}/api/pull?t=${token}`, { method: 'POST' })).body)
+assert.equal(
+  untickedPull.entries.filter((entry) => entry.relative.startsWith('sessions/')).length,
+  0,
+  'an unticked workspace sends nothing',
+)
+const untickedStatus = controller.status()
+assert.equal(untickedStatus.workspaces.desktop.find(item => item.id === workspaceId).selected, false)
+assert.equal(untickedStatus.workspaces.on, 0, 'the card counts no ticked workspace')
+await controller.act({ action: 'set-workspace', id: workspaceId, on: true })
+assert.equal(controller.status().workspaces.on, 1)
+console.log('ok  the workspace switch holds back the outbound side')
 
 // --- a longer local log wins over the stored shorter one, with a backup kept
 const desktopLog = fs.readFileSync(path.join(sessions, slugOf(desktopPath), seed.dir, seed.file))

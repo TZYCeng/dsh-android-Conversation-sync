@@ -79,7 +79,7 @@ window.__ModuleLoader__.load({
         mode: '目标工作区',
         modeAuto: '同名工作区互传',
         modeRoot: '统一放到同步目录',
-        modeHint: '同名：按工作区标题配对，找不到就放到根目录下；统一：一律 <根目录>/<项目名>。',
+        modeHint: '目标目录：勾上的工作区落在手机上的同名文件夹；也可以在这一行右侧把它改投到手机任意一个工作区。',
         phoneRoot: '手机同步根目录',
         desktopRoot: '电脑同步根目录',
         archived: '含已归档会话',
@@ -87,9 +87,8 @@ window.__ModuleLoader__.load({
         secretsWarn: '密钥走局域网明文 HTTP，默认关闭：只传模型用到的 refs，records 不动。',
         force: '强制重发',
         forceHint: '忽略「版本相同 / 内容相同」的判断，下一次下发全量重传。',
-
         plugins: '插件',
-        pluginsHint: '只从电脑到手机（单向）。默认全不勾：勾一项推一项；取消勾选不会卸载手机上已装的。',
+        pluginsHint: '只从电脑到手机（单向）。默认全不勾：勾一项推一项；取消勾选不会卸载手机上已装的。标「不兼容警告」的也能勾，开启时提示，由手机端自行修。',
         skills: '技能',
         skillsHint: '只从电脑到手机。默认全不勾：勾选后才推送，references/scripts 一起搬。',
         models: '模型',
@@ -123,18 +122,26 @@ window.__ModuleLoader__.load({
         syncIdle: '手机配对后不会自动同步；点这个按钮，双方才开始上传和下载。',
         syncNeedPair: '手机要先跑命令里的 pair 模式（配对并等待），按钮才有效。',
 
-        workspaceTitle: '工作区配对',
-        workspaceHint: '默认同名工作区对齐；也可以把某个电脑工作区改到手机上任意一个工作区。',
+        workspaceTitle: '同步工作区',
+        workspaceHint: '上半：每个电脑工作区一个「同步对话」开关（和插件、技能一样，默认全不勾），勾上才双向同步。下半：手机上报的工作区，选它回到电脑时落到哪个工作区。',
         workspaceAuto: '同名（自动）',
+        workspaceTarget: '默认：手机同名目录',
         workspaceRoot: '手机根目录',
         workspacePhone: '手机端工作区',
+        workspacePhoneHint: '手机上报的项目列在下面；给某项选一个电脑工作区，它回到电脑时就落到那儿（不选则落到电脑根目录下的同名文件夹）。',
+        workspacePhoneTarget: '默认：电脑同名目录',
         workspaceNone: '手机还没有上报工作区索引。先让手机配对并完成一次同步。',
-        workspaceReset: '恢复同名',
+        workspaceReset: '清除配对',
         workspaceSessions: '会话',
         workspaceDeskCount: '电脑',
         workspacePhoneCount: '手机',
         workspaceArchived: '归档',
         workspaceNoIndex: '电脑的 workspace.json 读不出来',
+        workspaceSync: '同步对话',
+        workspaceSyncHint: '「同步对话」：勾选后这个工作区的会话才会和手机互传',
+        pluginBundled: '自带依赖',
+        pluginWarn: '不兼容警告',
+        pluginWarnTitle: '开启时提醒：',
         modelsGroups: '模型组',
         modelsGroupHint: '每个模型组单独勾选：一行自带 endpoint 的配置，或 config.providers 里的一个提供方；插件提供的也在列表里。',
         modelsPlugin: '插件提供',
@@ -187,7 +194,7 @@ window.__ModuleLoader__.load({
         mode: 'Target workspace',
         modeAuto: 'Match by title',
         modeRoot: 'One sync folder',
-        modeHint: 'Match: pair workspaces by title, fall back to <root>/<project>. One folder: always <root>/<project>.',
+        modeHint: 'Target: a ticked workspace lands in the phone folder of the same name; use the selector on its row to point it somewhere else.',
         phoneRoot: 'Phone sync root',
         desktopRoot: 'Desktop sync root',
         archived: 'Include archived',
@@ -197,7 +204,7 @@ window.__ModuleLoader__.load({
         forceHint: 'Ignore the "same version / same content" shortcut for the next pull.',
 
         plugins: 'Plugins',
-        pluginsHint: 'Desktop to phone only (one-way). Nothing is ticked by default; unticking never uninstalls.',
+        pluginsHint: 'Desktop to phone only (one-way). Nothing is ticked by default; a plugin marked with a warning can still be ticked and repaired on the phone.',
         skills: 'Skills',
         skillsHint: 'Desktop to phone. Nothing is ticked by default; references and scripts travel with the skill.',
         models: 'Models',
@@ -231,18 +238,26 @@ window.__ModuleLoader__.load({
         syncIdle: 'A paired phone does not sync by itself. This button releases both sides.',
         syncNeedPair: 'The phone has to run the command in pair mode (pair and wait) first.',
 
-        workspaceTitle: 'Workspace pairing',
-        workspaceHint: 'Same-name workspaces align by default; you can point a desktop workspace at any phone workspace.',
+        workspaceTitle: 'Workspaces',
+        workspaceHint: 'Top: one「sync conversations」switch per desktop workspace, off like plugins and skills; only a ticked one syncs both ways. Bottom: the workspaces the phone reports — pick the desktop workspace each lands in when its conversations come back.',
         workspaceAuto: 'Same name (auto)',
+        workspaceTarget: 'Default: same-named phone folder',
         workspaceRoot: 'Phone root',
         workspacePhone: 'Phone workspaces',
+        workspacePhoneHint: 'The projects the phone reported. Pick a desktop workspace for one and its conversations land there (otherwise in a same-named folder under the desktop root).',
+        workspacePhoneTarget: 'Default: desktop folder of the same name',
         workspaceNone: 'The phone has not reported its workspace index yet. Pair it and run one sync.',
-        workspaceReset: 'Match by name',
+        workspaceReset: 'Clear pairings',
         workspaceSessions: 'sessions',
         workspaceDeskCount: 'desktop',
         workspacePhoneCount: 'phone',
         workspaceArchived: 'archived',
         workspaceNoIndex: 'The desktop workspace.json is unreadable',
+        workspaceSync: 'Sync conversations',
+        workspaceSyncHint: 'Sync conversations: only a ticked workspace travels to and from the phone',
+        pluginBundled: 'self-contained',
+        pluginWarn: 'compat warning',
+        pluginWarnTitle: 'On enable: ',
         modelsGroups: 'Model groups',
         modelsGroupHint: 'One switch per group: a whole endpoint row, or one provider inside config.providers. Plugin-provided groups are listed too.',
         modelsPlugin: 'from plugin',
@@ -287,15 +302,22 @@ window.__ModuleLoader__.load({
 .msy-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .msy-item{display:flex;gap:7px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--dsw-alias-border-l1);font-size:11.5px;min-width:0}
 .msy-item:last-child{border-bottom:0}
+/* A plugin row carries a name and a description, so its items line up at the top. */
+.msy-item{align-items:flex-start}
+.msy-item>.msy-check,.msy-item>.msy-tag,.msy-item>.msy-meta{margin-top:2px}
 .msy-check{flex:none;appearance:none;font:inherit;font-size:10px;line-height:1;width:14px;height:14px;padding:0;border-radius:4px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .msy-check-on{background:var(--dsw-alias-brand-primary,#4c8dff);border-color:var(--dsw-alias-brand-primary,#4c8dff);color:#fff}
 .msy-check:disabled{opacity:.45;cursor:default}
 .msy-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:11px}
+.msy-name-col{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.msy-name-col .msy-name{flex:none}
+.msy-desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary);font-size:10.5px;line-height:1.35}
 .msy-meta{flex:none;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));font-size:10.5px;font-variant-numeric:tabular-nums}
 .msy-tag{flex:none;font-size:10px;padding:0 6px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);line-height:1.5}
 .msy-tag-send{border-color:var(--dsw-alias-brand-primary,#4c8dff);color:var(--dsw-alias-brand-primary,#4c8dff)}
 .msy-tag-same{color:var(--dsw-alias-state-success-primary,#0a7d4f);border-color:currentColor}
 .msy-tag-bad{color:var(--dsw-alias-state-error-primary,#b42318);border-color:currentColor}
+.msy-tag-warn{color:var(--dsw-alias-state-warning-primary,#a16207);border-color:currentColor;cursor:help}
 .msy-stats{display:flex;gap:14px;flex-wrap:wrap}
 .msy-stat{display:flex;flex-direction:column;gap:0}
 .msy-stat-n{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -348,6 +370,12 @@ window.__ModuleLoader__.load({
       } finally {
         clearTimeout(timer)
       }
+    }
+
+    /** A per-item switch value with an "undecided" fallback. */
+    function picked(map, key, fallback) {
+      const value = map?.[key]
+      return typeof value === 'boolean' ? value : fallback
     }
 
     /** Format a timestamp as a short wall clock. */
@@ -590,21 +618,70 @@ window.__ModuleLoader__.load({
                 ? t('syncNever')
                 : t('syncIdle')
 
-      /** One row of the plugin list: version, size and what the next pull will do. */
-      const pluginRow = (plugin, index, onToggle, isBusy, translate) =>
-        h(
-          SwitchRow,
-          {
-            key: plugin.name,
-            checked: plugin.selected === true,
-            disabled: isBusy || plugin.installable !== true,
-            label: plugin.version ? `${plugin.name}@${plugin.version}` : plugin.name,
-            title: plugin.reason ?? plugin.description ?? plugin.name,
-            onToggle: () => onToggle(plugin.name, plugin.selected !== true),
-          },
+      /**
+       * One row of the plugin list: version, size and what the next pull will do.
+       *
+       * A plugin with native bits or outside dependencies is still switchable —
+       * the phone may be the place to repair it — but its row carries a warning
+       * tag. Only a package that cannot be mounted at all stays disabled.
+       */
+      /**
+       * One row of the plugin list: version, size and what the next pull will do.
+       *
+       * The package name alone does not say what a plugin is for, so the row
+       * carries the package's own one-line description underneath it (the
+       * long description, if any, is the hover title). A plugin with native bits
+       * or outside dependencies is still switchable — the phone may be the place
+       * to repair it — but its row carries a warning tag. Only a package that
+       * cannot be mounted at all stays disabled.
+       */
+      const pluginRow = (plugin, index, onToggle, isBusy, translate) => {
+        const summary = typeof plugin.description === 'string' ? plugin.description.trim() : ''
+        const long = typeof plugin.descriptionFull === 'string' ? plugin.descriptionFull.trim() : ''
+        return h(
+          'li',
+          { className: 'msy-item', title: [long || summary, plugin.warning].filter(Boolean).join('\n') },
+          h(
+            'button',
+            {
+              type: 'button',
+              className: plugin.selected === true ? 'msy-check msy-check-on' : 'msy-check',
+              role: 'checkbox',
+              'aria-checked': plugin.selected === true,
+              'aria-label': `${plugin.name} sync`,
+              disabled: isBusy || plugin.deliverable === false,
+              onClick: () => onToggle(plugin.name, plugin.selected !== true),
+            },
+            plugin.selected === true ? '✓' : '·',
+          ),
+          h(
+            'span',
+            { className: 'msy-name-col' },
+            h(
+              'span',
+              { className: 'msy-name' },
+              plugin.version ? `${plugin.name}@${plugin.version}` : plugin.name,
+            ),
+            summary.length > 0
+              ? h('span', { className: 'msy-desc', 'aria-label': `${plugin.name} description` }, summary)
+              : null,
+          ),
+          plugin.dependenciesInside === true && (plugin.dependencies ?? []).length > 0
+            ? h('span', { className: 'msy-tag msy-tag-same' }, translate('pluginBundled'))
+            : null,
+          plugin.deliverable === false
+            ? h('span', { className: 'msy-tag msy-tag-bad' }, translate('stateUnsupported'))
+            : plugin.warning
+              ? h(
+                  'span',
+                  { className: 'msy-tag msy-tag-warn', title: plugin.warning },
+                  translate('pluginWarn'),
+                )
+              : null,
           h('span', { className: 'msy-meta' }, size(plugin.bytes)),
           h(StateTag, { state: plugin.state, t: translate }),
         )
+      }
 
       const skillRow = (skill, index, onToggle, isBusy, translate) =>
         h(
@@ -624,7 +701,32 @@ window.__ModuleLoader__.load({
       /** Flip one model group's key switch (it rides along with the group). */
       const onKey = useCallback((name, on) => act('set-key', { name, on }), [act])
 
-      const modelRow = (model, index, onToggle, isBusy, translate, onKeyToggle) =>
+      /**
+       * The per-group key switch ("密钥 ✓/✕"): whether this group carries the
+       * credential refs it names. A plain function component keeps the value
+       * readable both in the panel and in a render pass.
+       */
+      function keyChip(model, isBusy, translate, onKeyToggle) {
+        const on = model.keySelected !== false
+        return h(
+          'button',
+          {
+            type: 'button',
+            className: on ? 'msy-key msy-key-on' : 'msy-key',
+            role: 'checkbox',
+            'aria-checked': on,
+            'aria-label': `${model.label ?? model.key} key`,
+            disabled: isBusy,
+            title: `${(model.keys ?? []).join(', ') || '—'}${
+              (model.missingKeys ?? []).length > 0 ? ` · 电脑上缺 ${model.missingKeys.join(', ')}` : ''
+            }`,
+            onClick: () => onKeyToggle(model.key, !on),
+          },
+          `${translate('modelsKey')} ${on ? '✓' : '✕'}`,
+        )
+      }
+
+      const modelRow = (model, index, onToggle, isBusy, translate, onKeyToggle, keyOn) =>
         h(
           SwitchRow,
           {
@@ -654,25 +756,7 @@ window.__ModuleLoader__.load({
                 model.pluginSelected === false ? `插件 ${model.plugin} 未勾选` : `${translate('modelsPlugin')} ${model.plugin ?? ''}`,
               )
             : null,
-          // Whether this group carries the credential refs it names. A group
-          // whose refs are missing cannot be called on the phone, so it says so
-          // instead of pretending the model works.
-          h(
-            'button',
-            {
-              type: 'button',
-              className: model.keySelected === false ? 'msy-key' : 'msy-key msy-key-on',
-              role: 'checkbox',
-              'aria-checked': model.keySelected !== false,
-              'aria-label': `${model.label ?? model.key} key`,
-              disabled: isBusy,
-              title: `${(model.keys ?? []).join(', ') || '—'}${
-                (model.missingKeys ?? []).length > 0 ? ` · 电脑上缺 ${model.missingKeys.join(', ')}` : ''
-              }`,
-              onClick: () => onKeyToggle(model.key, model.keySelected === false),
-            },
-            `${translate('modelsKey')} ${model.keySelected === false ? '✕' : '✓'}`,
-          ),
+          keyChip(model, isBusy, translate, onKeyToggle),
           (model.missingKeys ?? []).length > 0
             ? h('span', { className: 'msy-tag msy-tag-bad' }, `${translate('modelsKeyMissing')} ${model.missingKeys.join(',')}`)
             : null,
@@ -895,13 +979,15 @@ window.__ModuleLoader__.load({
 
     /** Every panel card, in display order. */
     const CARDS = [
+      // 连接先行：二维码/命令/网卡是每次使用的入口，放在最上面。
+      { key: 'pairing', make: ctx => h(card$pairing, ctx) },
       { key: 'syncTitle', make: ctx => h(card$syncTitle, ctx) },
       { key: 'channels', make: ctx => h(card$channels, ctx) },
-      { key: 'workspaceTitle', make: ctx => h(card$workspaceTitle, ctx) },
+      // 会话通道的全部开关集中在一个卡片里（含目标模式、根目录、工作区勾选）。
+      { key: 'workspaceTitle', make: ctx => h(card$workspaces, ctx) },
       { key: 'plugins', make: ctx => h(card$plugins, ctx) },
       { key: 'skills', make: ctx => h(card$skills, ctx) },
       { key: 'modelsGroups', make: ctx => h(card$modelsGroups, ctx) },
-      { key: 'pairing', make: ctx => h(card$pairing, ctx) },
       { key: 'stats', make: ctx => h(card$stats, ctx) },
       { key: 'log', make: ctx => h(card$log, ctx) },
     ]
@@ -956,13 +1042,7 @@ window.__ModuleLoader__.load({
     /** Card `channels`: rendered behind its own error boundary. */
     function card$channels(ctx) {
 
-      const {
-        t, act, busy, status, error, load, copied, onCopy, onKey,
-        channels, sync, plugins, skills, models, modelSections,
-        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
-        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
-        pluginRow, skillRow, modelRow, address, dotClass, stateText,
-      } = ctx
+      const { t, act, busy, peer } = ctx
       return (
         h(
           'div',
@@ -987,131 +1067,50 @@ window.__ModuleLoader__.load({
                 {
                   key,
                   type: 'button',
-                  className: channels[key] === true ? 'msy-chip msy-chip-on' : 'msy-chip',
-                  'aria-pressed': channels[key] === true,
+                  className: ctx.channels[key] === true ? 'msy-chip msy-chip-on' : 'msy-chip',
+                  'aria-pressed': ctx.channels[key] === true,
                   disabled: busy,
-                  onClick: () => act('set-channel', { channel: key, on: channels[key] !== true }),
+                  onClick: () => act('set-channel', { channel: key, on: ctx.channels[key] !== true }),
                 },
                 label,
               ),
             ),
           ),
           h('div', { className: 'msy-empty' }, t('channelHint')),
-
-          /* ---------------------------------------------------- targets */
-          h(
-            'div',
-            { className: 'msy-label-row' },
-            h('span', { className: 'msy-label' }, t('mode')),
-            h(
-              'span',
-              { className: 'msy-row' },
-              ...[
-                ['auto', t('modeAuto')],
-                ['root', t('modeRoot')],
-              ].map(([key, label]) =>
-                h(
-                  'button',
-                  {
-                    key,
-                    type: 'button',
-                    className: sync.mode === key ? 'msy-chip msy-chip-on' : 'msy-chip',
-                    'aria-pressed': sync.mode === key,
-                    disabled: busy,
-                    onClick: () => act('set-mode', { mode: key }),
-                  },
-                  label,
-                ),
-              ),
-            ),
-          ),
-          h('div', { className: 'msy-empty' }, t('modeHint')),
-          h(
-            'div',
-            { className: 'msy-row' },
-            h(
-              'label',
-              { className: 'msy-field' },
-              h('span', { className: 'msy-meta' }, t('phoneRoot')),
-              h('input', {
-                className: 'msy-input',
-                defaultValue: sync.phoneRoot ?? '',
-                spellCheck: false,
-                onBlur: event => act('set-root', { which: 'phone', value: event?.target?.value ?? '' }),
-              }),
-            ),
-            h(
-              'label',
-              { className: 'msy-field' },
-              h('span', { className: 'msy-meta' }, t('desktopRoot')),
-              h('input', {
-                className: 'msy-input',
-                defaultValue: sync.desktopRoot ?? '',
-                spellCheck: false,
-                onBlur: event => act('set-root', { which: 'desktop', value: event?.target?.value ?? '' }),
-              }),
-            ),
-          ),
-          h(
-            'div',
-            { className: 'msy-row' },
-            h(
-              'button',
-              {
-                type: 'button',
-                className: sync.includeArchived ? 'msy-chip msy-chip-on' : 'msy-chip',
-                'aria-pressed': sync.includeArchived === true,
-                disabled: busy,
-                onClick: () => act('set-archived', { on: sync.includeArchived !== true }),
-              },
-              t('archived'),
-            ),
-            h(
-              'button',
-              {
-                type: 'button',
-                className: sync.secrets ? 'msy-chip msy-chip-on' : 'msy-chip',
-                'aria-pressed': sync.secrets === true,
-                disabled: busy,
-                onClick: () => act('set-secrets', { on: sync.secrets !== true }),
-                title: t('secretsWarn'),
-              },
-              t('secrets'),
-            ),
-            h(
-              'button',
-              {
-                type: 'button',
-                className: 'msy-btn',
-                disabled: busy,
-                title: t('forceHint'),
-                onClick: () => act('force'),
-              },
-              t('force'),
-            ),
-          ),
         )
       )
     }
 
-    /** Card `workspaceTitle`: rendered behind its own error boundary. */
-    function card$workspaceTitle(ctx) {
-
-      const {
-        t, act, busy, status, error, load, copied, onCopy, onKey,
-        channels, sync, plugins, skills, models, modelSections,
-        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
-        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
-        pluginRow, skillRow, modelRow, address, dotClass, stateText,
-      } = ctx
-      return (
+    /**
+     * Card `workspaces`: every switch about conversations, in one place.
+     *
+     * 目标工作区（同名/统一目录）、两个根目录、「含已归档」和每个工作区自己的
+     * 「同步对话」勾选都在这里；「同步 API 密钥」跟着模型走（见模型卡片）。
+     */
+    function card$workspaces(ctx) {
+      const { t, act, busy, sync, desktopWorkspaces, phoneWorkspaces, phoneKnown, wsMap, resolveTarget } = ctx
+      const chosen = desktopWorkspaces.filter(item => item.selected === true).length
+      const root = String(sync.phoneRoot ?? '').replace(/\/+$/u, '')
+      return h(
+        'div',
+        { className: 'msy-card msy-pairing' },
         h(
           'div',
-          { className: 'msy-card msy-pairing' },
+          { className: 'msy-label-row' },
+          h('span', { className: 'msy-label' }, `${t('workspaceTitle')} · ${chosen}/${desktopWorkspaces.length} ${t('selectedCount')}`),
           h(
-            'div',
-            { className: 'msy-label-row' },
-            h('span', { className: 'msy-label' }, `${t('workspaceTitle')} · ${t('workspaceDeskCount')} ${desktopWorkspaces.length} / ${t('workspacePhoneCount')} ${phoneWorkspaces.length}`),
+            'span',
+            { className: 'msy-row' },
+            h(
+              'button',
+              { type: 'button', className: 'msy-btn', disabled: busy || desktopWorkspaces.length === 0, onClick: () => act('set-all', { kind: 'workspaces', on: true }) },
+              t('selectAll'),
+            ),
+            h(
+              'button',
+              { type: 'button', className: 'msy-btn', disabled: busy || chosen === 0, onClick: () => act('set-all', { kind: 'workspaces', on: false }) },
+              t('selectNone'),
+            ),
             Object.keys(wsMap).length > 0
               ? h(
                   'button',
@@ -1120,77 +1119,169 @@ window.__ModuleLoader__.load({
                 )
               : null,
           ),
-          h('div', { className: 'msy-empty' }, t('workspaceHint')),
-          workspaces?.indexError === true ? h('div', { className: 'msy-err' }, t('workspaceNoIndex')) : null,
-          desktopWorkspaces.length === 0
+        ),
+        h('div', { className: 'msy-empty' }, t('workspaceHint')),
+        ctx.workspaces?.indexError === true ? h('div', { className: 'msy-err' }, t('workspaceNoIndex')) : null,
+
+        /* --------------------------------------------------- roots + extras */
+        h(
+          'div',
+          { className: 'msy-row' },
+          h(
+            'label',
+            { className: 'msy-field' },
+            h('span', { className: 'msy-meta' }, t('phoneRoot')),
+            h('input', {
+              className: 'msy-input',
+              defaultValue: sync.phoneRoot ?? '',
+              spellCheck: false,
+              onBlur: event => act('set-root', { which: 'phone', value: event?.target?.value ?? '' }),
+            }),
+          ),
+          h(
+            'label',
+            { className: 'msy-field' },
+            h('span', { className: 'msy-meta' }, t('desktopRoot')),
+            h('input', {
+              className: 'msy-input',
+              defaultValue: sync.desktopRoot ?? '',
+              spellCheck: false,
+              onBlur: event => act('set-root', { which: 'desktop', value: event?.target?.value ?? '' }),
+            }),
+          ),
+        ),
+        h(
+          'div',
+          { className: 'msy-row' },
+          h(
+            'button',
+            {
+              type: 'button',
+              className: sync.includeArchived ? 'msy-chip msy-chip-on' : 'msy-chip',
+              'aria-pressed': sync.includeArchived === true,
+              disabled: busy,
+              onClick: () => act('set-archived', { on: sync.includeArchived !== true }),
+            },
+            t('archived'),
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'msy-btn',
+              disabled: busy,
+              title: t('forceHint'),
+              onClick: () => act('force'),
+            },
+            t('force'),
+          ),
+        ),
+        h('div', { className: 'msy-meta' }, t('modeHint')),
+
+        /* ------------------------------------------------- desktop rows */
+        desktopWorkspaces.length === 0
+          ? h('div', { className: 'msy-empty' }, t('noneInCategory'))
+          : h(
+              'div',
+              { className: 'msy-pairing' },
+              ...desktopWorkspaces.map(workspace => {
+                const target = resolveTarget(workspace)
+                return h(
+                  'div',
+                  { key: workspace.id, className: 'msy-pair' },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: workspace.selected === true ? 'msy-check msy-check-on' : 'msy-check',
+                      role: 'checkbox',
+                      'aria-checked': workspace.selected === true,
+                      'aria-label': `${workspace.title} 同步对话`,
+                      title: t('workspaceSyncHint'),
+                      disabled: busy,
+                      onClick: () => act('set-workspace', { id: workspace.id, on: workspace.selected !== true }),
+                    },
+                    workspace.selected === true ? '✓' : '·',
+                  ),
+                  h('span', { className: 'msy-pair-name', title: workspace.path }, workspace.title),
+                  h(
+                    'span',
+                    { className: 'msy-meta' },
+                    `${workspace.sessions} ${t('workspaceSessions')}` +
+                      (workspace.archived > 0 ? ` · ${workspace.archived} ${t('workspaceArchived')}` : ''),
+                  ),
+                  h('span', { className: 'msy-pair-arrow' }, '→'),
+                  h(
+                    'select',
+                    {
+                      className: 'msy-select',
+                      value: typeof wsMap[workspace.id] === 'string' ? wsMap[workspace.id] : '',
+                      disabled: busy || !phoneKnown || workspace.selected !== true,
+                      title: target?.path ?? `${root}/${workspace.title}`,
+                      onChange: event => act('set-workspace-map', {
+                        desktop: workspace.id,
+                        phone: event?.target?.value ?? '',
+                      }),
+                    },
+                    h('option', { value: '' }, t('workspaceTarget')),
+                    ...phoneWorkspaces.map(item =>
+                      h('option', { key: item.id, value: item.id }, `${item.title}（${item.sessions}）`),
+                    ),
+                  ),
+                )
+              }),
+            ),
+        h(
+          'div',
+          { className: 'msy-label-row' },
+          h('span', { className: 'msy-label' }, `${t('workspacePhone')} · ${phoneWorkspaces.length}`),
+        ),
+        h('div', { className: 'msy-empty' }, t('workspacePhoneHint')),
+        phoneKnown
+          ? phoneWorkspaces.length === 0
             ? h('div', { className: 'msy-empty' }, t('noneInCategory'))
             : h(
                 'div',
                 { className: 'msy-pairing' },
-                ...desktopWorkspaces.map(workspace => {
-                  const target = resolveTarget(workspace)
-                  const sameTitle = phoneWorkspaces.find(
-                    item => String(item.title ?? '').trim().toLowerCase() === String(workspace.title ?? '').trim().toLowerCase(),
-                  )
-                  const autoLabel = sameTitle === undefined
-                    ? t('workspaceAuto')
-                    : `${t('workspaceAuto')} → ${sameTitle.title}`
+                ...phoneWorkspaces.map(item => {
+                  const home = desktopWorkspaces.find(workspace => workspace.id === wsMap[`phone:${item.id}`])
                   return h(
                     'div',
-                    { key: workspace.id, className: 'msy-pair' },
-                    h(
-                      'span',
-                      { className: 'msy-pair-name', title: workspace.path },
-                      workspace.title,
-                    ),
-                    h(
-                      'span',
-                      { className: 'msy-meta' },
-                      `${workspace.sessions} ${t('workspaceSessions')}` +
-                        (workspace.archived > 0 ? ` · ${workspace.archived} ${t('workspaceArchived')}` : ''),
-                    ),
-                    h('span', { className: 'msy-pair-arrow' }, '→'),
+                    { key: item.id, className: 'msy-pair' },
+                    h('span', { className: 'msy-pair-name', title: item.path }, item.title),
+                    h('span', { className: 'msy-meta' }, `${item.sessions} ${t('workspaceSessions')}`),
+                    h('span', { className: 'msy-pair-arrow' }, '←'),
+                    // Where this phone project's conversations land when they
+                    // come back: a desktop workspace the user picks here.
                     h(
                       'select',
                       {
                         className: 'msy-select',
-                        value: typeof wsMap[workspace.id] === 'string' ? wsMap[workspace.id] : '',
-                        disabled: busy || !phoneKnown,
-                        title: target?.path ?? `${sync.phoneRoot ?? ''}/${workspace.title}`,
-                        onChange: event => act('set-workspace-map', {
-                          desktop: workspace.id,
-                          phone: event?.target?.value ?? '',
+                        value: typeof wsMap[`phone:${item.id}`] === 'string' ? wsMap[`phone:${item.id}`] : '',
+                        disabled: busy || desktopWorkspaces.length === 0,
+                        title: home === undefined ? `${root}/${item.title}` : home.path,
+                        'aria-label': `${item.title} → 电脑工作区`,
+                        onChange: event => act('set-phone-workspace-map', {
+                          phone: item.id,
+                          desktop: event?.target?.value ?? '',
                         }),
                       },
-                      h('option', { value: '' }, autoLabel),
-                      ...phoneWorkspaces.map(item =>
-                        h('option', { key: item.id, value: item.id }, `${item.title}（${item.sessions}）`),
+                      h('option', { value: '' }, t('workspacePhoneTarget')),
+                      ...desktopWorkspaces.map(workspace =>
+                        h('option', { key: workspace.id, value: workspace.id }, workspace.title),
                       ),
                     ),
+                    (item.incoming ?? []).length > 0
+                      ? h(
+                          'span',
+                          { className: 'msy-tag msy-tag-send', title: item.incoming.join('、') },
+                          `← ${item.incoming.join('、')}`,
+                        )
+                      : null,
                   )
                 }),
-              ),
-          h(
-            'div',
-            { className: 'msy-label-row' },
-            h('span', { className: 'msy-label' }, `${t('workspacePhone')} · ${phoneWorkspaces.length}`),
-          ),
-          phoneKnown
-            ? phoneWorkspaces.length === 0
-              ? h('div', { className: 'msy-empty' }, t('noneInCategory'))
-              : h(
-                  'div',
-                  { className: 'msy-row' },
-                  ...phoneWorkspaces.map(item =>
-                    h(
-                      'span',
-                      { key: item.id, className: 'msy-tag', title: item.path },
-                      `${item.title}（${item.sessions}）`,
-                    ),
-                  ),
-                )
-            : h('div', { className: 'msy-empty' }, t('workspaceNone')),
-        )
+              )
+          : h('div', { className: 'msy-empty' }, t('workspaceNone')),
       )
     }
 
@@ -1274,7 +1365,24 @@ window.__ModuleLoader__.load({
             ),
           ),
           h('div', { className: 'msy-empty' }, models.length === 0 ? t('modelsEmpty') : t('modelsGroupHint')),
-          models.length === 0 ? null : h('div', { className: 'msy-meta' }, t('modelsKeysHint')),
+          // 「同步 API 密钥」总开关跟着模型走：密钥属于模型组，不属于会话通道。
+          h(
+            'div',
+            { className: 'msy-row' },
+            h(
+              'button',
+              {
+                type: 'button',
+                className: sync.secrets ? 'msy-chip msy-chip-on' : 'msy-chip',
+                'aria-pressed': sync.secrets === true,
+                disabled: busy,
+                title: t('secretsWarn'),
+                onClick: () => act('set-secrets', { on: sync.secrets !== true }),
+              },
+              t('secrets'),
+            ),
+            models.length === 0 ? null : h('span', { className: 'msy-meta' }, t('modelsKeysHint')),
+          ),
           sync.secrets === false && models.length > 0 ? h('div', { className: 'msy-err' }, t('secretsOff')) : null,
           models.length === 0
             ? null
@@ -1309,6 +1417,7 @@ window.__ModuleLoader__.load({
                           busy,
                           t,
                           onKey,
+                          picked(sync.modelKeys, model.key, true),
                         ),
                       ),
                     ),

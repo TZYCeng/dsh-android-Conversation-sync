@@ -143,11 +143,10 @@ fs.writeFileSync(
 /* ------------------------------------------------------------- controller */
 
 // Pre-seed the state so the fake desktop never writes outside its own home:
-// `desktopRoot` is where a push *creates* workspaces, and `mode: root` makes the
-// phone's path mapping address `desktopRoot` rather than reusing whatever
-// absolute path the fake index happens to name. (A workspace path inside the
-// temp tree would also be filtered out as a scratch workspace by `planPull`,
-// which is why the index below names a plausible project path instead.)
+// `desktopRoot` is where a push *creates* workspaces, and the per-workspace
+// switch decides what travels at all. (A workspace path inside the temp tree
+// would also be filtered out as a scratch workspace by `planPull`, which is why
+// the index below names a plausible project path instead.)
 const FIXTURE_TOKEN = '0123456789abcdef0123456789abcdef'
 const stateDir = path.join(home, 'dsh-mobile-sync')
 fs.mkdirSync(stateDir, { recursive: true })
@@ -168,9 +167,11 @@ fs.writeFileSync(
         plugins: { 'dsh-demo': true },
         skills: { 'desk-skill': true, 'desk-flat': true },
         models: {},
-        mode: 'root',
+        // Workspace pairing is a per-workspace switch now: the fixture's one
+        // project has to be ticked, exactly like a user ticks it in the panel.
+        workspaces: { [workspaceId]: true },
         includeArchived: false,
-        defaultsRev: 2,
+        defaultsRev: 3,
         desktopRoot: path.join(home, 'DSH'),
       },
       peer: null,

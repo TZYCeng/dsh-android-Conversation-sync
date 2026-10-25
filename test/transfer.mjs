@@ -24,12 +24,12 @@ import os from 'node:os'
 import path from 'node:path'
 import zlib from 'node:zlib'
 
-import { normalizeSync, defaultSync, itemSelected, selected, setSelected, setSelectedAll } from '../lib/channels.js'
+import { normalizeSync, defaultSync, desktopForPhone, itemSelected, selected, setPhoneWorkspaceMap, setSelected, setSelectedAll } from '../lib/channels.js'
 import { ingestPush, planPull, registerBundles } from '../lib/transfer.js'
 import { listPlugins } from '../lib/plugins.js'
 import { listSkills } from '../lib/skills.js'
 import { listModels } from '../lib/models.js'
-import { readIndex } from '../lib/index-sync.js'
+import { readIndex, writeIndex } from '../lib/index-sync.js'
 import { scan, verifyLog } from '../lib/sessions.js'
 import { pack } from '../lib/tar.js'
 import { slugOf } from '../lib/slug.js'
@@ -120,6 +120,10 @@ fs.writeFileSync(
 
 const sync = normalizeSync({})
 sync.desktopRoot = path.join(work, 'desk')
+// Every project this suite makes up is ticked through the helper below; real
+// planPull calls spread it because `workspaces` is a per-item switch map and
+// assigning a new one would replace choices other sections made.
+const TICKED = { workspaceWanted: true }
 const plugins = listPlugins({ profileDir: profile })
 const skills = listSkills({ home, agentsHome })
 const models = listModels({ patchFile: path.join(profile, 'cordis.patch.yml'), credentialsFile })
@@ -167,9 +171,9 @@ const legacy = normalizeSync({ plugins: { old: true }, skills: { old: true }, in
 assert.deepEqual(legacy.plugins, {})
 assert.deepEqual(legacy.skills, {})
 assert.equal(legacy.includeArchived, false)
-assert.equal(legacy.defaultsRev, 2)
-const modern = normalizeSync({ defaultsRev: 2, plugins: { old: true }, includeArchived: true })
-assert.deepEqual(modern.plugins, { old: true }, 'a rev-2 decision is never overwritten')
+assert.equal(legacy.defaultsRev, 3)
+const modern = normalizeSync({ defaultsRev: 3, plugins: { old: true }, includeArchived: true })
+assert.deepEqual(modern.plugins, { old: true }, 'a rev-3 decision is never overwritten')
 assert.equal(modern.includeArchived, true)
 
 // A decision persists exactly as written, including "off" for a plugin whose
@@ -183,8 +187,37 @@ assert.equal(selected(reloaded.plugins, 'dsh-demo', true), true, 'an untouched p
 setSelectedAll(sync, 'plugins', ['dsh-demo', 'dsh-other'], true)
 assert.equal(sync.plugins['dsh-other'], true, 'set-all flips every named item')
 assert.equal(normalizeSync({ channels: { plugins: 'off' } }).channels.plugins, false, 'string switches are understood')
-assert.equal(normalizeSync({ mode: 'nonsense' }).mode, 'auto', 'a bad mode falls back to auto')
 assert.equal(defaultSync().phoneRoot, '/storage/emulated/0/DSH')
+assert.equal(
+  defaultSync(undefined, path.join(work, 'h')).desktopRoot,
+  path.join(work, 'h', 'sessions'),
+  'a new install roots the desktop side at the DSH conversation store',
+)
+assert.equal(itemSelected(sync, 'workspaces', 'ws-1'), false, 'a workspace syncs nothing until ticked')
+// Rev 3 moved the desktop root onto the conversation store. An install still on
+// the old invented default is moved; a rev-2 install keeps its stored root
+// (migrating is a one-time step, not something every load re-applies) — and the
+// old by-title pairing map is dropped either way, because pairing is a
+// per-workspace decision now.
+const migrated = normalizeSync(
+  { desktopRoot: path.join(work, 'h', 'DSH'), workspaceMap: { a: 'b' } },
+  undefined,
+  path.join(work, 'h'),
+)
+assert.equal(migrated.desktopRoot, path.join(work, 'h', 'sessions'), 'a pre-rev-3 install moves onto the store root')
+assert.deepEqual(migrated.workspaceMap, {}, 'the old implicit pairing map is dropped')
+assert.deepEqual(migrated.workspaces, {}, 'and no workspace is ticked on its behalf')
+const rev2 = normalizeSync({ defaultsRev: 2, desktopRoot: path.join(work, 'h', 'DSH') }, undefined, path.join(work, 'h'))
+assert.equal(rev2.defaultsRev, 3, 'a rev-2 file is stamped rev 3 once')
+assert.equal(rev2.desktopRoot, path.join(work, 'h', 'sessions'), 'and a rev-2 install still on the old root moves too')
+assert.deepEqual(rev2.plugins, {}, 'and its rev-2 implicit choices are re-seeded')
+assert.deepEqual(rev2.workspaces, {}, 'per-workspace switches start off')
+const typedRoot = normalizeSync({ defaultsRev: 3, desktopRoot: path.join(work, 'mine') }, undefined, path.join(work, 'h'))
+assert.equal(typedRoot.desktopRoot, path.join(work, 'mine'), 'a root the user typed is never overruled')
+const freshRoot = normalizeSync({ defaultsRev: 3 }, undefined, path.join(work, 'h'))
+assert.equal(freshRoot.desktopRoot, path.join(work, 'h', 'sessions'), 'an install that already migrated keeps the store root')
+setSelected(sync, 'workspaces', 'ws-1', true)
+assert.equal(normalizeSync(JSON.parse(JSON.stringify(sync))).workspaces['ws-1'], true, 'a workspace switch survives a round trip')
 console.log('ok  channel defaults and per-item switches survive persistence')
 
 /* ---------------------------------------------------------- plugin planning */
@@ -214,14 +247,15 @@ const first = planPull({
   sent: {},
   credentialsFile,
   now: 1000,
+  ...TICKED,
 })
 const pluginFiles = first.files.filter(file => file.relative.startsWith('_meta/plugins/')).map(file => file.relative)
 assert.ok(pluginFiles.some(name => name.startsWith('_meta/plugins/dsh-demo/')), 'a ticked plugin is packed')
 assert.ok(!pluginFiles.some(name => name.startsWith('_meta/plugins/dsh-other/')), 'an unticked plugin is not packed')
-assert.ok(!pluginFiles.some(name => name.startsWith('_meta/plugins/dsh-heavy/')), 'an unsupported plugin is not packed')
-assert.ok(!pluginFiles.some(name => name.startsWith('_meta/plugins/dsh-native/')), 'a native plugin is not packed')
-assert.deepEqual(first.summary.plugins.off, ['dsh-other'])
-assert.deepEqual(first.summary.plugins.unsupported.sort(), ['dsh-heavy', 'dsh-native'])
+assert.ok(!pluginFiles.some(name => name.startsWith('_meta/plugins/dsh-heavy/')), 'an unticked plugin is not packed, warned or not')
+assert.ok(!pluginFiles.some(name => name.startsWith('_meta/plugins/dsh-native/')), 'and neither is an unticked native one')
+assert.deepEqual(first.summary.plugins.off.sort(), ['dsh-heavy', 'dsh-native', 'dsh-other'])
+assert.deepEqual(first.summary.plugins.unsupported, [])
 assert.deepEqual(first.sent.plugins['dsh-demo'], { version: '1.2.3', at: 1000 })
 
 const profileFile = first.files.find(file => file.relative === '_meta/profile/package.json')
@@ -231,8 +265,38 @@ assert.deepEqual(registered.dsh.profile.bundles, ['@deepseek-ai/dsh-base', 'dsh-
 assert.deepEqual(registered.dependencies, {}, 'the phone dependencies are left alone')
 console.log(`ok  per-plugin switches -> ${first.summary.plugins.send.length} packed, ${first.summary.plugins.off.length} off`)
 
+// A warned plugin is still shipped when ticked: the user may want it on the phone
+// and repair it there. The warning travels in the summary and the log instead of
+// blocking the transfer.
+sync.plugins = { 'dsh-heavy': true, 'dsh-native': true }
+const warned = planPull({
+  sessionsRoot,
+  indexFile,
+  sync,
+  peer,
+  peerFiles,
+  catalogs,
+  sent: {},
+  credentialsFile,
+  ...TICKED,
+})
+const warnedFiles = warned.files.filter(file => file.relative.startsWith('_meta/plugins/')).map(file => file.relative)
+assert.ok(warnedFiles.some(name => name.startsWith('_meta/plugins/dsh-heavy/')), 'a plugin with external deps still travels')
+assert.ok(warnedFiles.some(name => name.startsWith('_meta/plugins/dsh-native/')), 'and so does one with a native artifact')
+assert.deepEqual(warned.summary.plugins.unsupported.map(item => item.name).sort(), ['dsh-heavy', 'dsh-native'])
+assert.ok(warned.summary.plugins.unsupported.every(item => typeof item.reason === 'string' && item.reason.length > 0))
+assert.ok(warned.lines.some(line => /标记为不支持/.test(line)), 'the log explains the warning')
+assert.deepEqual(
+  JSON.parse(String(warned.files.find(file => file.relative === '_meta/profile/package.json').data)).dsh.profile.bundles,
+  ['@deepseek-ai/dsh-base', 'dsh-heavy', 'dsh-native'],
+  'and both are registered in the phone profile',
+)
+sync.plugins = {}
+console.log('ok  a warned plugin is shipped when ticked, with a note')
+
 /* ------------------------------------------------------------ version skip */
 
+sync.plugins = { 'dsh-demo': true, 'dsh-other': false }
 const sameVersion = planPull({
   sessionsRoot,
   indexFile,
@@ -242,6 +306,7 @@ const sameVersion = planPull({
   catalogs,
   sent: first.sent,
   credentialsFile,
+  ...TICKED,
 })
 assert.equal(
   sameVersion.files.filter(file => file.relative.startsWith('_meta/plugins/')).length,
@@ -268,6 +333,7 @@ const newer = planPull({
   catalogs: { ...catalogs, plugins: bumped },
   sent: first.sent,
   credentialsFile,
+  ...TICKED,
 })
 assert.equal(newer.summary.plugins.send.length, 1, 'a newer version is sent')
 assert.equal(newer.summary.plugins.send[0].version, '1.3.0')
@@ -284,6 +350,7 @@ const forced = planPull({
   catalogs: { ...catalogs, plugins: bumped },
   sent: {},
   credentialsFile,
+  ...TICKED,
 })
 assert.equal(forced.summary.plugins.send.length, 1, 'a forced resend ignores the same-version shortcut')
 sync.force = false
@@ -299,6 +366,7 @@ const ahead = planPull({
   catalogs: { ...catalogs, plugins: bumped },
   sent: {},
   credentialsFile,
+  ...TICKED,
 })
 assert.equal(ahead.summary.plugins.send.length, 0, 'a newer phone version is not downgraded')
 assert.deepEqual(ahead.summary.plugins.newer, ['dsh-demo'])
@@ -317,6 +385,7 @@ const skillPull = planPull({
   catalogs,
   sent: {},
   credentialsFile,
+  ...TICKED,
 })
 const skillArchive = skillPull.files.map(file => file.relative).filter(name => name.startsWith('_meta/skills/'))
 assert.deepEqual(skillArchive, ['_meta/skills/alpha/SKILL.md'], 'only the ticked skill travels, with its bundle layout')
@@ -335,6 +404,7 @@ const skillAgain = planPull({
   catalogs,
   sent: skillPull.sent,
   credentialsFile,
+  ...TICKED,
 })
 assert.deepEqual(skillAgain.summary.skills.send, [], 'identical skill content is skipped')
 assert.deepEqual(skillAgain.summary.skills.same, ['alpha'])
@@ -349,6 +419,7 @@ const skillMissing = planPull({
   catalogs,
   sent: skillPull.sent,
   credentialsFile,
+  ...TICKED,
 })
 assert.equal(skillMissing.summary.skills.send.length, 1, 'a skill the phone does not have is sent again')
 
@@ -365,6 +436,7 @@ const changed = planPull({
   catalogs: { plugins, skills: edited, models },
   sent: skillPull.sent,
   credentialsFile,
+  ...TICKED,
 })
 assert.equal(changed.summary.skills.send.length, 1, 'edited content is sent again')
 assert.notEqual(changed.sent.skills.alpha.digest, alphaDigest, 'the digest moved with the content')
@@ -383,6 +455,7 @@ const modelPull = planPull({
   catalogs,
   sent: {},
   credentialsFile,
+  ...TICKED,
 })
 const patchFile = modelPull.files.find(file => file.relative === '_meta/patch/cordis.patch.yml')
 assert.ok(patchFile !== undefined, 'the merged patch travels when the models channel is on')
@@ -411,6 +484,7 @@ const noKey = planPull({
   catalogs,
   sent: {},
   credentialsFile,
+  ...TICKED,
 })
 assert.equal(
   noKey.files.filter(file => file.relative === '_meta/patch/credentials.yaml').length,
@@ -431,6 +505,7 @@ const heldBack = planPull({
   catalogs,
   sent: {},
   credentialsFile,
+  ...TICKED,
 })
 assert.equal(
   heldBack.files.filter(file => file.relative === '_meta/patch/credentials.yaml').length,
@@ -450,6 +525,7 @@ const secretPull = planPull({
   catalogs,
   sent: {},
   credentialsFile,
+  ...TICKED,
 })
 const secretFile = secretPull.files.find(file => file.relative === '_meta/patch/credentials.yaml')
 assert.ok(secretFile !== undefined, 'with the secrets switch on, the ref travels')
@@ -497,16 +573,45 @@ fs.writeFileSync(indexFile, `${JSON.stringify({
   },
 }, null, 2)}\n`)
 
-const sessionPull = planPull({
-  sessionsRoot,
-  indexFile,
-  sync,
-  peer,
-  peerFiles: { ...peerFiles, index: null },
-  catalogs,
-  sent: {},
-  credentialsFile,
-})
+function planWith(switches = {}, extra = {}) {
+  return planPull({
+    sessionsRoot,
+    indexFile,
+    sync,
+    peer,
+    peerFiles: { ...peerFiles, index: null },
+    catalogs,
+    sent: {},
+    credentialsFile,
+    ...TICKED,
+    workspaces: { ...(sync.workspaces ?? {}), ...switches },
+    ...extra,
+  })
+}
+
+// The workspace index above registers a project this store does not have on
+// disk (only the seed session is copied), so the panel-style fixture also lists
+// a project that does hold the seed.
+const seededWorkspaceId = '44444444-4444-4444-8444-444444444444'
+const indexDoc = JSON.parse(fs.readFileSync(indexFile, 'utf8'))
+indexDoc.tables.workspaces[seededWorkspaceId] = {
+  path: path.join(work, 'seeded-project'),
+  title: 'seeded',
+  sessionIds: [seedCandidate.id],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+}
+indexDoc.global.workspaceIds.push(seededWorkspaceId)
+fs.writeFileSync(indexFile, `${JSON.stringify(indexDoc, null, 2)}\n`)
+
+// Nothing comes out of a project until its own「同步对话」box is ticked.
+const untickedPull = planWith({})
+assert.equal(untickedPull.summary.sessions, 0, 'a workspace nobody ticked sends nothing')
+assert.equal(untickedPull.summary.workspacesOff, 2, 'and the log counts the unticked projects as held back')
+assert.ok(untickedPull.lines.some(line => /未勾选/.test(line)), 'and says why')
+console.log('ok  an unticked workspace stays home')
+
+const sessionPull = planWith({ [workspaceId]: true, [seededWorkspaceId]: false })
 const sessionFiles = sessionPull.files.filter(file => file.relative.startsWith('sessions/'))
 assert.equal(sessionFiles.length, 1)
 assert.equal(
@@ -514,20 +619,15 @@ assert.equal(
   `sessions/${slugOf('/storage/emulated/0/DSH/demo')}/${seedCandidate.id}/${seedCandidate.file}`,
 )
 assert.equal(verifyLog(sessionFiles[0].data).cwd, '/storage/emulated/0/DSH/demo', 'the mirror claims the phone directory')
-
 // Archived sessions stay home unless asked for.
 const archivedIndex = JSON.parse(fs.readFileSync(indexFile, 'utf8'))
 archivedIndex.global.archivedSessionIds = [seedCandidate.id]
 fs.writeFileSync(indexFile, `${JSON.stringify(archivedIndex, null, 2)}\n`)
-const archivedPull = planPull({
-  sessionsRoot, indexFile, sync, peer, peerFiles: { ...peerFiles, index: null }, catalogs, sent: {}, credentialsFile,
-})
+const archivedPull = planWith({ [workspaceId]: true, [seededWorkspaceId]: false })
 assert.equal(archivedPull.summary.sessions, 0, 'an archived session is not synced by default')
 assert.equal(archivedPull.summary.archivedSkipped, 1)
 sync.includeArchived = true
-const includedPull = planPull({
-  sessionsRoot, indexFile, sync, peer, peerFiles: { ...peerFiles, index: null }, catalogs, sent: {}, credentialsFile,
-})
+const includedPull = planWith({ [workspaceId]: true, [seededWorkspaceId]: false })
 assert.equal(includedPull.summary.sessions, 1, 'the switch brings it back')
 sync.includeArchived = false
 fs.writeFileSync(indexFile, `${JSON.stringify({
@@ -539,45 +639,27 @@ console.log('ok  sessions carry the mapped cwd and honour the archived switch')
 // A phone that reports exactly the bytes it holds gets nothing back: the size
 // inventory is what keeps a repeat sync cheap.
 const mirroredSize = Buffer.byteLength(sessionFiles[0].data)
-const settled = planPull({
-  sessionsRoot,
-  indexFile,
-  sync,
-  peer,
-  peerFiles: { ...peerFiles, index: null, sessions: `${seedCandidate.id} ${mirroredSize}\n` },
-  catalogs,
-  sent: {},
-  credentialsFile,
-})
+const settled = planWith(
+  { [workspaceId]: true, [seededWorkspaceId]: false },
+  { peerFiles: { ...peerFiles, index: null, sessions: `${seedCandidate.id} ${mirroredSize}\n` } },
+)
 assert.equal(settled.summary.sessions, 0, 'a session the phone already holds is not transferred again')
 assert.equal(settled.summary.sessionsSame, 1, 'and it is counted as already current')
 assert.equal(settled.files.filter(file => file.relative.startsWith('sessions/')).length, 0)
 
 // An older phone copy (a smaller size) is still refreshed.
-const stale = planPull({
-  sessionsRoot,
-  indexFile,
-  sync,
-  peer,
-  peerFiles: { ...peerFiles, index: null, sessions: `${seedCandidate.id} ${mirroredSize - 10}\n` },
-  catalogs,
-  sent: {},
-  credentialsFile,
-})
+const stale = planWith(
+  { [workspaceId]: true, [seededWorkspaceId]: false },
+  { peerFiles: { ...peerFiles, index: null, sessions: `${seedCandidate.id} ${mirroredSize - 10}\n` } },
+)
 assert.equal(stale.summary.sessions, 1, 'a phone copy of a different size is refreshed')
 
 // And the force switch ignores the size shortcut too.
 sync.force = true
-const forcedSessions = planPull({
-  sessionsRoot,
-  indexFile,
-  sync,
-  peer,
-  peerFiles: { ...peerFiles, index: null, sessions: `${seedCandidate.id} ${mirroredSize}\n` },
-  catalogs,
-  sent: {},
-  credentialsFile,
-})
+const forcedSessions = planWith(
+  { [workspaceId]: true, [seededWorkspaceId]: false },
+  { peerFiles: { ...peerFiles, index: null, sessions: `${seedCandidate.id} ${mirroredSize}\n` } },
+)
 assert.equal(forcedSessions.summary.sessions, 1, 'force resends even when the sizes match')
 sync.force = false
 console.log('ok  the phone size inventory skips unchanged sessions, force overrides it')
@@ -614,9 +696,7 @@ assert.equal(scan(sessionsRoot).find(entry => entry.id === subId)?.origin, 'suba
 const withSubagent = JSON.parse(fs.readFileSync(indexFile, 'utf8'))
 withSubagent.tables.workspaces[workspaceId].sessionIds.push(subId)
 fs.writeFileSync(indexFile, `${JSON.stringify(withSubagent, null, 2)}\n`)
-const subPlan = planPull({
-  sessionsRoot, indexFile, sync, peer, peerFiles: { ...peerFiles, index: null }, catalogs, sent: {}, credentialsFile,
-})
+const subPlan = planWith({ [workspaceId]: true, [seededWorkspaceId]: false })
 assert.equal(subPlan.summary.subagentSkipped, 1, 'a delegated transcript is not mirrored')
 assert.equal(subPlan.summary.sessions, 1, 'the user session beside it still travels')
 assert.equal(
@@ -707,7 +787,8 @@ console.log('ok  push records the phone inventory and leaves the desktop profile
 /* ------------------------------------------------------- workspace pairing */
 
 // The panel lets the user point a desktop workspace at a *differently named*
-// phone workspace, in both directions. Without a pairing, titles are matched.
+// phone workspace, in both directions. Without a pairing, a new phone project
+// gets its own directory under the root — titles are never silently aligned.
 const phoneOtherId = '55555555-5555-4555-8555-555555555555'
 const phoneOtherPath = '/storage/emulated/0/DSH/Phone Project'
 const nowIso = new Date().toISOString()
@@ -734,16 +815,10 @@ const phoneOtherIndex = {
 }
 
 sync.workspaceMap = { [workspaceId]: phoneOtherId }
-const pairedPull = planPull({
-  sessionsRoot,
-  indexFile,
-  sync,
-  peer,
-  peerFiles: { ...peerFiles, index: JSON.stringify(phoneOtherIndex) },
-  catalogs,
-  sent: {},
-  credentialsFile,
-})
+const pairedPull = planWith(
+  { [workspaceId]: true, [seededWorkspaceId]: false },
+  { peerFiles: { ...peerFiles, index: JSON.stringify(phoneOtherIndex) } },
+)
 const pairedSession = pairedPull.files.find(file => file.relative.startsWith('sessions/'))
 assert.equal(
   pairedSession.relative,
@@ -779,7 +854,7 @@ const pairedPush = ingestPush({
   sessionsRoot,
   indexFile,
   backupDir: path.join(work, 'backup'),
-  sync,
+  sync: { ...sync, workspaces: { [workspaceId]: true } },
   device: 'Pixel 9',
   entries: [
     { relative: `${slugOf(phoneOtherPath)}/${pairedId}/session.v4.jsonl.zstd`, data: pairedLog },
@@ -803,35 +878,153 @@ assert.ok(landed !== undefined, 'the incoming session was registered')
 assert.equal(landed.path, desktopPath, 'phone → desktop pairing lands in the chosen desktop workspace')
 console.log('ok  phone → desktop pairing lands the session in the paired workspace')
 
-// With the pairing cleared, the same phone workspace falls back to a directory
-// under the desktop root, named after its title.
+// With the pairing cleared, the same phone project falls back to a directory
+// under the desktop root, named after its title — and an unticked workspace
+// keeps the phone's brand-new project out entirely.
+async function unpairedPush(id, phoneWorkspace, syncState) {
+  const log = Buffer.concat([
+    zlib.zstdCompressSync(Buffer.from(`${JSON.stringify({
+      type: 'session', version: 4, id, createdAt: Date.now(), cwd: phoneOtherPath, isSeeded: false,
+    })}\n`)),
+    zlib.zstdCompressSync(Buffer.from(`${JSON.stringify({
+      type: 'agent/inbox/spliced',
+      data: { inserted: [{ role: 'user', content: [{ type: 'text', text: 'unpaired' }] }] },
+    })}\n`)),
+  ])
+  return ingestPush({
+    sessionsRoot,
+    indexFile,
+    backupDir: path.join(work, 'backup'),
+    sync: syncState,
+    device: 'Pixel 9',
+    entries: [
+      { relative: `${slugOf(phoneOtherPath)}/${id}/session.v4.jsonl.zstd`, data: log },
+      { relative: '_meta/index.json', data: Buffer.from(JSON.stringify({
+        ...phoneWorkspace,
+        tables: {
+          workspaces: {
+            ...phoneWorkspace.tables.workspaces,
+            [Object.keys(phoneWorkspace.tables.workspaces)[0]]: {
+              ...phoneWorkspace.tables.workspaces[Object.keys(phoneWorkspace.tables.workspaces)[0]],
+              sessionIds: [id],
+            },
+          },
+        },
+      })) },
+    ],
+  })
+}
+
 sync.workspaceMap = {}
 const unpairedId = '88888888-8888-4888-8888-888888888888'
-const unpairedLog = Buffer.concat([
-  zlib.zstdCompressSync(Buffer.from(`${JSON.stringify({
-    type: 'session', version: 4, id: unpairedId, createdAt: Date.now(), cwd: phoneOtherPath, isSeeded: false,
-  })}\n`)),
-  zlib.zstdCompressSync(Buffer.from(`${JSON.stringify({
-    type: 'agent/inbox/spliced',
-    data: { inserted: [{ role: 'user', content: [{ type: 'text', text: 'unpaired' }] }] },
-  })}\n`)),
-])
-ingestPush({
-  sessionsRoot,
-  indexFile,
-  backupDir: path.join(work, 'backup'),
-  sync,
-  device: 'Pixel 9',
-  entries: [{ relative: `${slugOf(phoneOtherPath)}/${unpairedId}/session.v4.jsonl.zstd`, data: unpairedLog }],
-})
+unpairedPush(unpairedId, phoneOtherIndex, sync)
 const unpairedLanded = Object.values(readIndex(indexFile).index.tables.workspaces)
   .find(workspace => workspace.sessionIds.includes(unpairedId))
 assert.equal(
   unpairedLanded.path,
   path.join(work, 'desk', 'Phone Project'),
-  'without a pairing the title decides, under the desktop root',
+  'without a pairing a brand-new phone project gets its own directory under the desktop root',
 )
-console.log('ok  clearing the pairing restores match-by-title under the desktop root')
+console.log('ok  clearing the pairing sends a new phone project to the desktop root')
+
+// A phone project the panel *has* shown (it is the target of a pairing) but
+// whose workspace is unticked keeps its new conversations on the phone.
+const blockedId = '99999999-9999-4999-8999-999999999999'
+const blockedWorkspace = {
+  unit: { name: 'workspace', version: 2 },
+  global: {
+    initialized: true,
+    defaultWorkspaceId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    workspaceIds: ['bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'],
+    archivedSessionIds: [],
+    pinnedSessionIds: [],
+  },
+  tables: {
+    workspaces: {
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb': {
+        path: '/storage/emulated/0/DSH/blocked',
+        title: 'blocked',
+        sessionIds: [blockedId],
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+    },
+  },
+}
+sync.workspaceMap = { [workspaceId]: true }
+// A phone project the panel has already shown (its phone id is the target of a
+// pairing) but whose workspace is unticked keeps its new conversations on the phone.
+const blockedSync = { ...sync, workspaceMap: { [workspaceId]: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }, workspaces: { [workspaceId]: false } }
+const blockedPush = await unpairedPush(blockedId, blockedWorkspace, blockedSync)
+assert.equal(blockedPush.counts.unpaired, 1, 'an unticked workspace keeps new phone conversations out')
+assert.ok(blockedPush.lines.some(line => /未勾选工作区/.test(line)))
+assert.equal(
+  Object.values(readIndex(indexFile).index.tables.workspaces).some(workspace => workspace.sessionIds.includes(blockedId)),
+  false,
+  'and nothing is registered for it',
+)
+const allowedPush = await unpairedPush(blockedId, blockedWorkspace, { ...blockedSync, workspaces: { [workspaceId]: true } })
+assert.equal(allowedPush.counts.imported, 1, 'ticking the workspace lets them in')
+console.log('ok  the workspace switch holds new phone conversations back')
+
+// A conversation this machine already holds is a mirror coming home: it rejoins
+// its project even while the switch is off (it is not a new project at all).
+const returningPush = await unpairedPush(seedCandidate.id, phoneOtherIndex, { ...sync, workspaces: {} })
+assert.equal(returningPush.counts.imported + returningPush.counts.identical + returningPush.counts['kept-local'] + returningPush.counts.diverged, 1)
+assert.equal(
+  Object.values(readIndex(indexFile).index.tables.workspaces).some(
+    workspace => workspace.title === 'Phone Project',
+  ),
+  true,
+  'and no duplicate "Phone Project" folder is invented for it',
+)
+console.log('ok  a mirrored conversation rejoins its home project instead of duplicating')
+
+/* ------------------------------------------- phone → desktop landing map */
+
+// The panel lists the phone's own workspaces and lets the user choose which
+// desktop workspace each one lands in. That pairing is stored as
+// `phone:<phone id> → <desktop id>` and wins over the default
+// `<desktopRoot>/<title>`.
+sync.workspaceMap = { [workspaceId]: true }
+const landingId = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'
+const landingPath = path.join(work, 'landing-project')
+const landingIndex = readIndex(indexFile).index
+landingIndex.tables.workspaces[landingId] = {
+  path: landingPath,
+  title: 'landing project',
+  sessionIds: [],
+  createdAt: nowIso,
+  updatedAt: nowIso,
+}
+landingIndex.global.workspaceIds.push(landingId)
+writeIndex(indexFile, landingIndex, { backup: false })
+sync.workspaces = { [workspaceId]: true, [landingId]: true }
+sync.workspaceMap = { [landingId]: phoneOtherId, [`phone:${phoneOtherId}`]: landingId }
+const landedByChoice = 'cccccccc-1111-4111-8111-cccccccccccc'
+await unpairedPush(landedByChoice, phoneOtherIndex, sync)
+const landedWorkspace = Object.values(readIndex(indexFile).index.tables.workspaces)
+  .find(workspace => workspace.sessionIds.includes(landedByChoice))
+assert.equal(landedWorkspace.path, landingPath, 'the phone workspace lands in the desktop workspace chosen for it')
+console.log('ok  a phone workspace lands in the desktop workspace picked for it')
+
+// The same conversation stays put when the chosen workspace is unticked, and
+// the pairing is kept (unticking is not "forget where it belongs").
+const blockedLanding = await unpairedPush(
+  'dddddddd-1111-4111-8111-dddddddddddd',
+  { ...phoneOtherIndex, tables: { workspaces: { [phoneOtherId]: { ...phoneOtherIndex.tables.workspaces[phoneOtherId], sessionIds: ['dddddddd-1111-4111-8111-dddddddddddd'] } } } },
+  { ...sync, workspaces: { [landingId]: false } },
+)
+assert.equal(blockedLanding.counts.unpaired, 1, 'an unticked landing workspace keeps the conversation on the phone')
+assert.equal(sync.workspaceMap[`phone:${phoneOtherId}`], landingId, 'the landing choice is not dropped by an import')
+
+// The reverse helper keeps the two directions in separate keys.
+setPhoneWorkspaceMap(sync, phoneOtherId, landingId)
+assert.equal(desktopForPhone(sync, phoneOtherId), landingId)
+assert.equal(sync.workspaceMap[phoneOtherId], undefined, 'the phone key never collides with a desktop key')
+assert.equal(setPhoneWorkspaceMap(sync, phoneOtherId, ''), '')
+assert.equal(desktopForPhone(sync, phoneOtherId), null, 'clearing falls back to the default folder')
+console.log('ok  the phone → desktop landing map round-trips on its own key')
 
 /* ------------------------------------------------------- profile merge unit */
 

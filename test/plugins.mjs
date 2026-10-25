@@ -15,7 +15,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { listPlugins, NATIVE_EXT, pluginFiles, readPlugin, SKIP_DIRS } from '../lib/plugins.js'
+import { firstSentence, listPlugins, NATIVE_EXT, pluginFiles, readPlugin, SKIP_DIRS } from '../lib/plugins.js'
 
 /** The realpath the module itself uses (native resolves junctions on Windows). */
 const realPath = fs.realpathSync.native ?? fs.realpathSync
@@ -97,7 +97,8 @@ writePackage(path.join(modules, 'demo-gyp'), {
   'binding.gyp': "{ 'targets': [] }\n",
 })
 
-// --- runtime dependencies cannot be resolved on the phone
+// --- runtime dependencies are a *warning*, not a refusal: the user may still
+// want the package on the phone (to repair it there).
 writePackage(path.join(modules, 'demo-dep'), {
   name: 'demo-dep',
   version: '2.0.0',
@@ -105,6 +106,33 @@ writePackage(path.join(modules, 'demo-dep'), {
   dependencies: { alpha: '^1.0.0', beta: '2.0.0' },
 }, {
   'index.js': "export default 'dep'\n",
+})
+
+// --- the same package, but carrying its own dependency, is self-contained
+writePackage(path.join(modules, 'demo-bundled'), {
+  name: 'demo-bundled',
+  version: '1.0.0',
+  dsh: { bundle: { patch: './cordis.patch.yml' } },
+  dependencies: { alpha: '^1.0.0' },
+}, {
+  'index.js': "export default 'bundled'\n",
+})
+writePackage(path.join(modules, 'demo-bundled', 'node_modules', 'alpha'), {
+  name: 'alpha',
+  version: '1.0.0',
+}, {
+  'index.js': "export default 'alpha'\n",
+})
+
+// --- a package with no `description` at all: the panel needs something to show,
+// so the README's first real sentence becomes the summary
+writePackage(path.join(modules, 'demo-undescribed'), {
+  name: 'demo-undescribed',
+  version: '0.3.0',
+  dsh: { bundle: { patch: './cordis.patch.yml' } },
+}, {
+  'index.js': "export default 'undescribed'\n",
+  'README.md': '![badge](badge.svg)\n\n# demo-undescribed\n\n> A one-liner\n\nShows a widget in the sidebar. More details follow.\n',
 })
 
 // --- `dsh` present but nothing the Loader could mount
@@ -140,6 +168,8 @@ writePackage(profileDir, {
   private: true,
   dependencies: {
     'demo-bundle': 'link:../source/demo-bundle',
+    'demo-bundled': '1.0.0',
+    'demo-undescribed': '0.3.0',
     'demo-native': '1.0.0',
     'demo-dep': '2.0.0',
     'demo-inert': '0.0.1',
@@ -158,14 +188,18 @@ writePackage(profileDir, {
 const all = listPlugins({ profileDir })
 assert.deepEqual(
   all.map((plugin) => plugin.name),
-  ['demo-bundle', 'demo-dep', 'demo-gyp', 'demo-inert', 'demo-native', 'demo-skip'],
+  ['demo-bundle', 'demo-bundled', 'demo-dep', 'demo-gyp', 'demo-inert', 'demo-native', 'demo-skip', 'demo-undescribed'],
   'candidates are the union of dependencies and bundles, sorted by name',
 )
 console.log(`ok  listed ${all.length} plugins: ${all.map((plugin) => plugin.name).join(', ')}`)
 
 assert.deepEqual(
   Object.keys(byName(all, 'demo-bundle')).sort(),
-  ['bundle', 'bytes', 'dependencies', 'description', 'dir', 'files', 'installable', 'name', 'patchFile', 'reason', 'version'],
+  [
+    'bundle', 'bundled', 'bytes', 'deliverable', 'dependencies', 'dependenciesInside', 'description',
+    'descriptionFull', 'descriptionSource',
+    'dir', 'files', 'installable', 'name', 'patchFile', 'reason', 'supported', 'version', 'warning',
+  ],
   'a record carries exactly the documented fields',
 )
 for (const plugin of all) {
@@ -182,7 +216,7 @@ console.log('ok  host library, missing dependency and missing bundle entry are d
 const skipped = listPlugins({ profileDir, skip: ['demo-skip'] })
 assert.deepEqual(
   skipped.map((plugin) => plugin.name),
-  ['demo-bundle', 'demo-dep', 'demo-gyp', 'demo-inert', 'demo-native'],
+  ['demo-bundle', 'demo-bundled', 'demo-dep', 'demo-gyp', 'demo-inert', 'demo-native', 'demo-undescribed'],
   'skip removes exactly the named package',
 )
 assert.equal(skipped.length, all.length - 1)
@@ -191,36 +225,59 @@ console.log('ok  skip removes only the named package')
 const bundle = byName(all, 'demo-bundle')
 assert.equal(bundle.version, '1.2.3')
 assert.equal(bundle.description, 'A clean bundle')
+assert.equal(bundle.descriptionSource, 'manifest', 'the manifest description wins when it exists')
 assert.equal(bundle.installable, true)
+assert.equal(bundle.supported, true)
+assert.equal(bundle.warning, null)
 assert.equal(bundle.reason, null)
+assert.equal(bundle.deliverable, true)
 assert.equal(bundle.bundle, true)
 assert.deepEqual(bundle.dependencies, [])
 assert.equal(bundle.dir, realPath(bundleSrc), 'dir is the real path behind the junction')
 assert.notEqual(bundle.dir, path.join(modules, 'demo-bundle'))
 console.log(`ok  clean bundle -> installable, dir=${bundle.dir}`)
 
+// A warned plugin stays switchable: only `supported`/`warning` change, and
+// `deliverable` says whether the phone can mount the package at all.
 const native = byName(all, 'demo-native')
 assert.equal(native.installable, false)
-assert.equal(native.reason, '含原生二进制，手机无法加载')
+assert.equal(native.supported, false)
+assert.equal(native.warning, '含原生二进制，手机无法加载')
+assert.equal(native.reason, native.warning)
+assert.equal(native.deliverable, true, 'a bundle with a native artifact can still be shipped')
 assert.equal(native.bundle, true)
 assert.deepEqual(native.dependencies, ['left-pad'], 'a native package may still declare dependencies')
-console.log(`ok  .node artifact -> ${native.reason}`)
+console.log(`ok  .node artifact -> warned, still tickable: ${native.warning}`)
 
 const gyp = byName(all, 'demo-gyp')
 assert.equal(gyp.installable, false)
-assert.equal(gyp.reason, '含原生二进制，手机无法加载')
+assert.equal(gyp.warning, '含原生二进制，手机无法加载')
+assert.equal(gyp.deliverable, true)
 assert.equal(gyp.bundle, true)
-console.log(`ok  binding.gyp alone -> ${gyp.reason}`)
+console.log(`ok  binding.gyp alone -> ${gyp.warning}`)
 
 const dep = byName(all, 'demo-dep')
 assert.equal(dep.installable, false)
-assert.equal(dep.reason, '依赖 2 个运行时包（alpha、beta），暂不支持整体搬移')
+assert.equal(dep.supported, false)
+assert.equal(dep.warning, '依赖 2 个外部运行时包（alpha、beta），手机端需自行安装')
+assert.equal(dep.reason, dep.warning)
+assert.equal(dep.dependenciesInside, false, 'neither dependency is inside the package')
+assert.deepEqual(dep.bundled, [])
+assert.equal(dep.deliverable, true, 'a client-only plugin can still be shipped')
 assert.equal(dep.bundle, false, 'this package is client-only')
-console.log(`ok  runtime dependencies -> ${dep.reason}`)
+console.log(`ok  runtime dependencies -> warned, still tickable: ${dep.warning}`)
+
+const bundled = byName(all, 'demo-bundled')
+assert.deepEqual(bundled.dependencies, ['alpha'])
+assert.deepEqual(bundled.bundled, ['alpha'], 'the dependency it carries itself is recognised')
+assert.equal(bundled.dependenciesInside, true)
+assert.equal(bundled.installable, true, 'a self-contained package needs no warning')
+console.log('ok  a package that carries its own dependencies is not warned about')
 
 const inert = byName(all, 'demo-inert')
 assert.equal(inert.installable, false)
 assert.equal(inert.reason, '不是可加载的 DSH 插件')
+assert.equal(inert.deliverable, false, 'nothing to mount means nothing to ship')
 assert.equal(inert.bundle, false)
 assert.deepEqual(inert.dependencies, [])
 console.log(`ok  bare dsh field -> ${inert.reason}`)
@@ -232,6 +289,23 @@ assert.equal(skippedRecord.description, 'No name field')
 assert.equal(skippedRecord.installable, true)
 assert.equal(skippedRecord.bundle, true)
 console.log('ok  missing manifest name/version fall back to directory name and null')
+
+// A plugin with no description still needs a readable summary in the panel: the
+// README's first real sentence is used (badges, headings, quotes skipped).
+const undescribed = byName(all, 'demo-undescribed')
+assert.equal(undescribed.description, 'Shows a widget in the sidebar.', 'the README sentence becomes the summary')
+assert.equal(undescribed.descriptionSource, 'readme')
+assert.equal(undescribed.descriptionFull, '')
+assert.equal(firstSentence(''), '')
+assert.equal(firstSentence('\n\n'), '')
+assert.equal(firstSentence('# Only a heading\n'), '')
+assert.equal(
+  firstSentence('Plain sentence? 第二句。\n'),
+  'Plain sentence?',
+  'a CJK or ASCII sentence end is honoured',
+)
+assert.equal(firstSentence(`x${'y'.repeat(400)}`).endsWith('…'), true, 'a very long line is shortened')
+console.log('ok  a plugin without a description shows its README sentence')
 
 // --- pluginFiles
 const expectedFiles = [

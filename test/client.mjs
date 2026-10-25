@@ -102,22 +102,30 @@ const status = {
     force: false,
     phoneRoot: '/storage/emulated/0/DSH',
     desktopRoot: 'C:\\Users\\x\\DSH',
-    workspaceMap: { 'ws-2': 'phone-2' },
-    defaultsRev: 2,
+    workspaceMap: { 'ws-2': 'phone-2', 'phone:phone-2': 'ws-1' },
+    workspaces: { 'ws-1': true },
+    modelKeys: { 'llm-pi-ai/grok': true },
+    defaultsRev: 3,
   },
   request: { id: 'deadbeef', at: Date.now() - 4000, status: 'done', doneAt: Date.now() },
   workspaces: {
     desktop: [
-      { id: 'ws-1', title: 'demo', path: 'C:\\work\\demo', sessions: 3, archived: 0, mapped: null },
-      { id: 'ws-2', title: 'Odds and ends', path: 'C:\\work\\Odds and ends', sessions: 1, archived: 2, mapped: 'phone-2' },
+      {
+        id: 'ws-1', title: 'demo', path: 'C:\\work\\demo', sessions: 3, archived: 0,
+        mapped: null, selected: true, target: '/storage/emulated/0/DSH/demo',
+      },
+      {
+        id: 'ws-2', title: 'Odds and ends', path: 'C:\\work\\Odds and ends', sessions: 1, archived: 2,
+        mapped: 'phone-2', selected: false, target: '/storage/emulated/0/DSH/Odds and ends',
+      },
     ],
     phone: [
-      { id: 'phone-1', title: 'demo', path: '/storage/emulated/0/DSH/demo', sessions: 2 },
-      { id: 'phone-2', title: 'Phone Project', path: '/storage/emulated/0/DSH/Phone Project', sessions: 0 },
+      { id: 'phone-1', title: 'demo', path: '/storage/emulated/0/DSH/demo', sessions: 2, incoming: ['demo'], mapped: '' },
+      { id: 'phone-2', title: 'Phone Project', path: '/storage/emulated/0/DSH/Phone Project', sessions: 0, incoming: [], mapped: 'ws-1' },
     ],
     phoneKnown: true,
-    map: { 'ws-2': 'phone-2' },
-    mode: 'auto',
+    map: { 'ws-2': 'phone-2', 'phone:phone-2': 'ws-1' },
+    on: 1,
     phoneRoot: '/storage/emulated/0/DSH',
     desktopRoot: 'C:\\Users\\x\\DSH',
   },
@@ -134,9 +142,16 @@ const status = {
     {
       name: 'dsh-demo',
       version: '1.2.3',
+      description: 'A demo bundle that does something visible',
+      descriptionFull: 'A demo bundle that does something visible',
       bytes: 4096,
       files: 4,
       installable: true,
+      supported: true,
+      deliverable: true,
+      dependenciesInside: false,
+      dependencies: [],
+      warning: null,
       reason: null,
       bundle: true,
       selected: true,
@@ -146,14 +161,21 @@ const status = {
     {
       name: 'dsh-native',
       version: '0.9.0',
+      description: 'Native helper, read from its README',
+      descriptionFull: '',
       bytes: 1024,
       files: 2,
       installable: false,
+      supported: false,
+      deliverable: true,
+      dependenciesInside: false,
+      dependencies: ['zod'],
+      warning: '含原生二进制，手机无法加载',
       reason: '含原生二进制，手机无法加载',
       bundle: true,
       selected: false,
       phoneVersion: null,
-      state: 'unsupported',
+      state: 'off',
     },
   ],
   skills: [
@@ -214,6 +236,8 @@ const status = {
       plugin: 'dsh-opencode-free',
       pluginSelected: false,
       selected: false,
+      // The host's per-group key switch: held back, so its key chip shows ✕.
+      keySelected: false,
     },
   ],
   errors: [],
@@ -313,6 +337,15 @@ const first = texts(panel.render({})).join(' | ')
 await new Promise(resolve => setTimeout(resolve, 30))
 cursor = 0
 const hydrated = panel.render({})
+// Card components are invoked until their output is stable: the first call
+// returns the element the card renders, and only re-rendering that element the
+// way React would descends into its children.
+cursor = 0
+texts(hydrated)
+// One more full pass: `texts` collapses components as it goes, so the first
+// walk only discovers the card components and the panel's initial state.
+cursor = 0
+texts(hydrated)
 
 /** Flatten an element tree into a list of strings, invoking components. */
 function texts(node, out = []) {
@@ -393,8 +426,9 @@ assert.match(all, /同步通道/, 'the channel card renders')
 for (const label of ['会话', '模型', '插件', '技能']) {
   assert.match(all, new RegExp(label), `the ${label} channel chip renders`)
 }
-assert.match(all, /同名工作区互传/, 'the workspace mode renders')
+assert.match(all, /同步工作区 · 1\/2 已选/, 'the workspace card counts the ticked projects')
 assert.match(all, /插件 · 1\/2 已选/, 'the plugin header counts the ticked items')
+assert.match(all, /同步 API 密钥/, 'the API-key switch lives with the models')
 assert.match(all, /技能 · 1\/2 已选/, 'the skill header counts the ticked items')
 assert.match(all, /本机会话 12 · 已登记 12 · 未登记（不同步） 0/, 'the panel explains how many sessions are actually synced')
 const roots = collect(hydrated, node => node.props?.className === 'msy-input')
@@ -405,9 +439,11 @@ assert.deepEqual(
 )
 
 assert.match(all, /dsh-demo@1\.2\.3/, 'a plugin is listed with its version')
+assert.match(all, /A demo bundle that does something visible/, 'a plugin row explains what the package does')
+assert.match(all, /Native helper, read from its README/, 'even a plugin with no manifest description shows a summary')
 assert.match(all, /版本相同/, 'a plugin already on the phone is tagged')
-assert.match(all, /dsh-native@0\.9\.0/, 'an unsupported plugin is still listed')
-assert.match(all, /不支持/, 'an unsupported plugin explains itself')
+assert.match(all, /dsh-native@0\.9\.0/, 'a warned plugin is still listed')
+assert.match(all, /不兼容警告/, 'a warned plugin carries its warning tag instead of being refused')
 assert.match(all, /kimi-computer-use/, 'a skill is listed')
 assert.match(all, /session-sync/, 'every skill is listed')
 assert.match(all, /98 · 985 KB/, 'a skill shows its file count and size')
@@ -418,17 +454,43 @@ assert.match(all, /同步完成/, 'a finished request is reported')
 assert.match(all, /再同步一次/, 'the button offers another round after a finished one')
 assert.match(all, /手机配对后不会自动同步/, 'the panel says a download does not sync by itself')
 
-// Workspace pairing: both machines' workspaces, and a select per desktop one.
-assert.match(all, /工作区配对/, 'the workspace pairing card renders')
+// Workspaces: both machines' list, one「同步对话」switch and one target select
+// per desktop workspace, and one landing select per phone workspace.
+assert.match(all, /同步工作区/, 'the workspace card renders')
 assert.match(all, /Phone Project/, 'the phone workspace list renders')
-assert.match(all, /恢复同名/, 'the reset button renders when a pairing exists')
+assert.match(all, /清除配对/, 'the reset button renders when a pairing exists')
 const selects = collect(hydrated, node => node.type === 'select')
-assert.equal(selects.length, 2, 'one target select per desktop workspace')
+assert.equal(selects.length, 4, 'one target select per desktop workspace, one landing select per phone one')
+const desktopSelects = selects.filter(node => String(node.props['aria-label'] ?? '').endsWith('→ 电脑工作区') === false)
+const phoneSelects = selects.filter(node => String(node.props['aria-label'] ?? '').endsWith('→ 电脑工作区'))
 assert.deepEqual(
-  selects.map(node => node.props.value),
+  desktopSelects.map(node => node.props.value),
   ['', 'phone-2'],
-  'the default is same-name; an explicit pairing shows its phone workspace',
+  'an unticked project keeps its default; a pairing shows its phone workspace',
 )
+assert.deepEqual(
+  desktopSelects.map(node => node.props.disabled),
+  [false, true],
+  'the target selector is editable only on a ticked project',
+)
+assert.deepEqual(
+  phoneSelects.map(node => node.props['aria-label']),
+  ['demo → 电脑工作区', 'Phone Project → 电脑工作区'],
+  'every phone workspace the phone reported carries a landing selector',
+)
+assert.deepEqual(
+  phoneSelects.map(node => node.props.value),
+  ['', 'ws-1'],
+  'a phone workspace can name the desktop workspace its conversations land in',
+)
+// Choosing one posts the reverse pairing; clearing it posts an empty desktop.
+await phoneSelects[1].props.onChange({ target: { value: '' } })
+const phoneMapPost = calls.slice().reverse().find(call => {
+  if (!String(call.url).endsWith('/action')) return false
+  return JSON.parse(call.init.body).action === 'set-phone-workspace-map'
+})
+assert.deepEqual(JSON.parse(phoneMapPost.init.body), { action: 'set-phone-workspace-map', phone: 'phone-2', desktop: '' })
+console.log('ok  phone workspaces are listed with a desktop landing selector')
 // The fixture's request is `done`, so the sync button is enabled (「再同步一次」);
 // `busy` is the only thing that disables it.
 assert.equal(
@@ -445,9 +507,15 @@ assert.match(all, /OpenCode Free/, 'a plugin provider is listed too')
 assert.match(all, /插件 dsh-opencode-free 未勾选/, 'a plugin group says the plugin itself is not ticked')
 
 const checks = collect(hydrated, node => node.props?.role === 'checkbox')
-// Per model group there are two switches: the group itself and its key.
-assert.equal(checks.length, 8, 'one switch per plugin, skill and model group, plus one key switch per group')
+// Per model group there are two switches: the group itself and its key; every
+// plugin and skill has one, and a「同步对话」box sits on every workspace row (5).
+assert.equal(checks.length, 10, 'one switch per plugin, skill, workspace and model group, plus one key switch per group')
 assert.equal(checks.filter(node => node.props['aria-checked'] === true).length, 5, 'exactly the selected items are ticked')
+assert.deepEqual(
+  checks.filter(node => String(node.props['aria-label']).endsWith(' key')).map(node => node.props['aria-checked']),
+  [true, false],
+  'the key chip follows the host: a group whose key is held back shows ✕',
+)
 console.log(`ok  panel renders ${checks.length} per-item switches`)
 
 /* ------------------------------------------------------------- toggling */
@@ -478,7 +546,7 @@ console.log('ok  ticking a model group posts set-model with its group key')
 // Keys ride along with the group unless the user says otherwise.
 const keySwitch = checks.find(node => node.props['aria-label'] === 'Grok key')
 assert.ok(keySwitch !== undefined, 'a model group carries its own key switch')
-assert.equal(keySwitch.props['aria-checked'], true, 'a key travels with its group by default')
+assert.equal(keySwitch.props['aria-checked'], true, 'a key travels with its group unless the stored switch says otherwise')
 assert.match(String(keySwitch.props.title), /GROK_API_KEY/, 'the key switch names the ref it carries')
 assert.equal(typeof keySwitch.props.onClick, 'function', 'the key switch is clickable')
 // The click itself is covered by `test/entry.mjs` over the real action route
@@ -495,6 +563,18 @@ const syncPost = calls.slice(before).find(call => {
   return JSON.parse(call.init.body).action === 'request-sync'
 })
 assert.ok(syncPost !== undefined, 'pressing the button posts request-sync')
+// The「同步对话」box on a workspace row posts set-workspace — the per-project
+// switch the user asked for (one per workspace, like plugins and skills).
+const workspaceSwitch = checks.find(node => node.props['aria-label'] === 'Odds and ends 同步对话')
+assert.ok(workspaceSwitch !== undefined, 'every workspace row carries its own「同步对话」box')
+await workspaceSwitch.props.onClick()
+const workspacePost = calls.slice(before).find(call => {
+  if (!String(call.url).endsWith('/action')) return false
+  return JSON.parse(call.init.body).action === 'set-workspace'
+})
+assert.deepEqual(JSON.parse(workspacePost.init.body), { action: 'set-workspace', id: 'ws-2', on: true })
+console.log('ok  the workspace box posts set-workspace with its id')
+
 const workspaceSelect = selects[0]
 await workspaceSelect.props.onChange({ target: { value: 'phone-1' } })
 const mapPost = calls.slice(before).find(call => {

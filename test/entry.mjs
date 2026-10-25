@@ -149,6 +149,30 @@ const cancelled = await act({ action: 'cancel-sync' })
 assert.equal(cancelled.body.request, null, 'the cancel button drops an untaken request')
 console.log('ok  the sync request and the workspace pairing round-trip through the action route')
 
+// The phone-workspace list: each phone project names the desktop workspace its
+// conversations land in (`phone:<id>` key), independently of the other direction.
+const landingTarget = (await act({ action: 'rescan' })).body.workspaces.desktop[0]?.id
+if (landingTarget === undefined) {
+  // This temp home has no workspace of its own: the action still has to validate,
+  // so only the refusal paths are exercised.
+  const refused = await act({ action: 'set-phone-workspace-map', phone: 'phone-ws-9', desktop: 'no-such-workspace' })
+  assert.equal(refused.status, 400, 'a desktop workspace that does not exist is refused')
+  console.log('ok  the phone landing action validates the desktop workspace (no local workspace here)')
+} else {
+  const phoneLanding = await act({ action: 'set-phone-workspace-map', phone: 'phone-ws-9', desktop: landingTarget })
+  assert.equal(phoneLanding.status, 200)
+  assert.equal(phoneLanding.body.sync.workspaceMap['phone:phone-ws-9'], landingTarget, 'the landing choice is persisted')
+  const badLanding = await act({ action: 'set-phone-workspace-map', phone: 'phone-ws-9', desktop: 'no-such-workspace' })
+  assert.equal(badLanding.status, 400, 'a desktop workspace that does not exist is refused')
+  assert.equal(badLanding.body.error, 'unknown desktop workspace')
+  const clearedLanding = await act({ action: 'set-phone-workspace-map', phone: 'phone-ws-9', desktop: '' })
+  assert.equal(clearedLanding.status, 200)
+  assert.equal(clearedLanding.body.sync.workspaceMap['phone:phone-ws-9'], undefined, 'an empty desktop id clears the landing choice')
+  const notAPhone = await act({ action: 'set-phone-workspace-map', phone: '', desktop: landingTarget })
+  assert.equal(notAPhone.status, 400, 'a missing phone id is refused')
+  console.log('ok  a phone workspace can be pointed at a desktop workspace')
+}
+
 // Per-group key switches: the panel can hold one group's key back without
 // touching that group's model switch.
 const keyOff = await act({ action: 'set-key', name: 'llm-pi-ai/grok', on: false })
