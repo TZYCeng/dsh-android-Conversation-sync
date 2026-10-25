@@ -1,6 +1,6 @@
 {
   "name": "dsh-mobile-sync",
-  "version": "0.3.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "description": "Sync DSH sessions, the workspace index, plugins, skills and model groups (one provider at a time) between this desktop and the DeepCode (dsh-mobile) Android app over the LAN, paired by a QR code. Nothing is ticked by default, and a sync starts only when the panel's button is pressed.",

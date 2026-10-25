@@ -478,6 +478,9 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState(undefined)
       const [copied, setCopied] = useState(false)
       const [busy, setBusy] = useState(false)
+      // Bumped by every status reload: a card that captured a render error
+      // forgets it, so a retry (or the next poll) gets a fresh attempt.
+      const [syncKey, setSyncKey] = useState(0)
       const alive = useRef(true)
 
       const load = useCallback(async () => {
@@ -486,6 +489,9 @@ window.__ModuleLoader__.load({
           if (alive.current) {
             setStatus(next)
             setError(undefined)
+            // A boundary holds its error until this key changes; the poll is the
+            // cheapest signal that "whatever broke may now work".
+            setSyncKey(value => value + 1)
           }
         } catch (cause) {
           if (alive.current) setError(String(cause?.message ?? cause))
@@ -686,6 +692,16 @@ window.__ModuleLoader__.load({
         byRow.get(rowKey).items.push(model)
       }
 
+      /** Everything a card may read; one object so cards stay scope-free. */
+      const ctx = {
+        t, act, busy, status, error, load, copied, onCopy, onKey,
+        channels, sync, plugins, skills, models, modelSections,
+        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
+        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
+        pluginRow, skillRow, modelRow, address, dotClass, stateText,
+        resetKey: syncKey,
+      }
+
       return h(
         'div',
         { className: 'msy-root' },
@@ -716,6 +732,191 @@ window.__ModuleLoader__.load({
           : null,
 
         /* ---------------------------------------------------- manual sync */
+        ...guarded(CARDS, ctx),
+      )
+    }
+
+    /** The rail icon: a phone with two arrows, sized to whatever the rail asks for. */
+    function Logo(props) {
+      const size = props?.size ?? 16
+      return h(
+        'svg',
+        {
+          width: size,
+          height: size,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          'aria-hidden': 'true',
+          focusable: 'false',
+        },
+        h('rect', {
+          x: 4.4,
+          y: 1.2,
+          width: 7.2,
+          height: 13.6,
+          rx: 1.8,
+          stroke: 'currentColor',
+          strokeWidth: 1.25,
+        }),
+        h('path', { d: 'M6.6 3.5h2.8', stroke: 'currentColor', strokeWidth: 1.1, strokeLinecap: 'round' }),
+        h('path', {
+          d: 'M6.3 7.2h3.4m0 0-1.1-1.1m1.1 1.1-1.1 1.1',
+          stroke: 'currentColor',
+          strokeWidth: 1.1,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        }),
+        h('path', {
+          d: 'M9.7 11.2H6.3m0 0 1.1-1.1M6.3 11.2l1.1 1.1',
+          stroke: 'currentColor',
+          strokeWidth: 1.1,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        }),
+      )
+    }
+
+    /* ----------------------------------------------------------------- mount */
+
+    /** Slot services this half needs before it can contribute anything. */
+    const inject = ['slots', 'locale']
+
+    /**
+     * Register the panel and its rail entry.
+     * @param ctx - the browser plugin context.
+     */
+    function apply(ctx) {
+      ctx.effect(() => ctx.locale.register(NS, { zh: DICT.zh, en: DICT.en }), 'mobile-sync: dictionaries')
+      ctx.effect(() => {
+        const style = document.createElement('style')
+        style.setAttribute('data-plugin', 'dsh-mobile-sync')
+        style.textContent = CSS
+        document.head.appendChild(style)
+        return () => style.remove()
+      }, 'mobile-sync: styles')
+
+      const t = ctx.locale.bind(NS)
+      if (ctx.slots === undefined) return
+
+      // `sidebar.panellist` is the rail; registering into it is also what tells
+      // the shell this plugin has a panel worth showing. Both registrations live
+      // together so a shell without a sidebar leaves nothing half-mounted.
+      try {
+        ctx.slots.inject('sidebar.panellist', () => {
+          const offPanel = ctx.slots.register(
+            { name: 'main', key: PANEL_ID, locale: NS, inject: () => ({ t }) },
+            owner => h(Panel, { ...owner, t }),
+          )
+          const offRow = ctx.slots.register(
+            { name: 'sidebar.panellist', id: PANEL_ID, order: 5, label: () => t('nav'), locale: NS },
+            owner => h(Logo, { size: owner?.size ?? 16 }),
+          )
+          return () => {
+            if (typeof offRow === 'function') offRow()
+            if (typeof offPanel === 'function') offPanel()
+          }
+        })
+      } catch (cause) {
+        // A shell without a sidebar still serves the LAN page, which is the
+        // whole feature; losing the panel is a downgrade, not a failure.
+        if (typeof console !== 'undefined') console.warn('[mobile-sync] sidebar unavailable:', cause)
+      }
+    }
+
+    exports.name = 'mobile-sync'
+    exports.inject = inject
+    exports.apply = apply
+    exports.__test = {
+      clock,
+      copyText,
+      size,
+      DICT,
+      SwitchRow,
+      SwitchList,
+      StateTag,
+      // The boundary is declared below the export line so the card list can
+      // reference it lazily; exposing it through a getter keeps the test hook
+      // working without hoisting the class ahead of its declaration.
+      get Boundary() {
+        return Boundary
+      },
+    }
+
+    /* --------------------------------------------------------------- guards */
+
+    /**
+     * Error boundary for one card.
+     *
+     * A render that throws anywhere inside the panel used to blank the whole
+     * body - a black rectangle with no clue which card broke. Every card now
+     * renders inside its own boundary, so a failure is a small red box in that
+     * card's place and everything else (retry button, log, switches) keeps
+     * working.
+     */
+    class Boundary extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { error: null }
+      }
+
+      static getDerivedStateFromError(error) {
+        return { error: String((error && error.message) || error) }
+      }
+
+      componentDidCatch(error, info) {
+        if (typeof console !== 'undefined') console.error('[mobile-sync] card failed:', error, info)
+      }
+
+      componentDidUpdate(prev) {
+        // A retry bumps `resetKey`; drop the captured error so the card renders
+        // again instead of staying a red box forever.
+        if (this.state.error !== null && prev.resetKey !== this.props.resetKey) this.setState({ error: null })
+      }
+
+      render() {
+        if (this.state.error !== null) {
+          return h(
+            'div',
+            { className: 'msy-card msy-card-tight' },
+            h('div', { className: 'msy-label' }, this.props.label ?? ''),
+            h('div', { className: 'msy-err' }, this.state.error),
+          )
+        }
+        return this.props.children ?? null
+      }
+    }
+
+    /** Render every card, each inside its own boundary. */
+    function guarded(cards, ctx) {
+      return cards.map((card, index) =>
+        h(Boundary, { key: index, label: card.key, resetKey: ctx.resetKey }, card.make(ctx)),
+      )
+    }
+
+    /** Every panel card, in display order. */
+    const CARDS = [
+      { key: 'syncTitle', make: ctx => h(card$syncTitle, ctx) },
+      { key: 'channels', make: ctx => h(card$channels, ctx) },
+      { key: 'workspaceTitle', make: ctx => h(card$workspaceTitle, ctx) },
+      { key: 'plugins', make: ctx => h(card$plugins, ctx) },
+      { key: 'skills', make: ctx => h(card$skills, ctx) },
+      { key: 'modelsGroups', make: ctx => h(card$modelsGroups, ctx) },
+      { key: 'pairing', make: ctx => h(card$pairing, ctx) },
+      { key: 'stats', make: ctx => h(card$stats, ctx) },
+      { key: 'log', make: ctx => h(card$log, ctx) },
+    ]
+
+    /** Card `syncTitle`: rendered behind its own error boundary. */
+    function card$syncTitle(ctx) {
+
+      const {
+        t, act, busy, status, error, load, copied, onCopy, onKey,
+        channels, sync, plugins, skills, models, modelSections,
+        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
+        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
+        pluginRow, skillRow, modelRow, address, dotClass, stateText,
+      } = ctx
+      return (
         h(
           'div',
           { className: 'msy-card msy-sync' },
@@ -748,9 +949,21 @@ window.__ModuleLoader__.load({
           ),
           h('div', { className: 'msy-empty' }, t('syncIdle')),
           h('div', { className: 'msy-meta' }, t('syncNeedPair')),
-        ),
+        )
+      )
+    }
 
-        /* ------------------------------------------------------- channels */
+    /** Card `channels`: rendered behind its own error boundary. */
+    function card$channels(ctx) {
+
+      const {
+        t, act, busy, status, error, load, copied, onCopy, onKey,
+        channels, sync, plugins, skills, models, modelSections,
+        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
+        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
+        pluginRow, skillRow, modelRow, address, dotClass, stateText,
+      } = ctx
+      return (
         h(
           'div',
           { className: 'msy-card msy-card-tight' },
@@ -877,9 +1090,21 @@ window.__ModuleLoader__.load({
               t('force'),
             ),
           ),
-        ),
+        )
+      )
+    }
 
-        /* ------------------------------------------------------ workspaces */
+    /** Card `workspaceTitle`: rendered behind its own error boundary. */
+    function card$workspaceTitle(ctx) {
+
+      const {
+        t, act, busy, status, error, load, copied, onCopy, onKey,
+        channels, sync, plugins, skills, models, modelSections,
+        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
+        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
+        pluginRow, skillRow, modelRow, address, dotClass, stateText,
+      } = ctx
+      return (
         h(
           'div',
           { className: 'msy-card msy-pairing' },
@@ -965,9 +1190,21 @@ window.__ModuleLoader__.load({
                   ),
                 )
             : h('div', { className: 'msy-empty' }, t('workspaceNone')),
-        ),
+        )
+      )
+    }
 
-        /* -------------------------------------------------------- plugins */
+    /** Card `plugins`: rendered behind its own error boundary. */
+    function card$plugins(ctx) {
+
+      const {
+        t, act, busy, status, error, load, copied, onCopy, onKey,
+        channels, sync, plugins, skills, models, modelSections,
+        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
+        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
+        pluginRow, skillRow, modelRow, address, dotClass, stateText,
+      } = ctx
+      return (
         h(SwitchList, {
           t,
           title: t('plugins'),
@@ -977,9 +1214,21 @@ window.__ModuleLoader__.load({
           onAll: on => act('set-all', { kind: 'plugins', on }),
           onToggle: (name, on) => act('set-plugin', { name, on }),
           render: pluginRow,
-        }),
+        })
+      )
+    }
 
-        /* --------------------------------------------------------- skills */
+    /** Card `skills`: rendered behind its own error boundary. */
+    function card$skills(ctx) {
+
+      const {
+        t, act, busy, status, error, load, copied, onCopy, onKey,
+        channels, sync, plugins, skills, models, modelSections,
+        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
+        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
+        pluginRow, skillRow, modelRow, address, dotClass, stateText,
+      } = ctx
+      return (
         h(SwitchList, {
           t,
           title: t('skills'),
@@ -989,9 +1238,21 @@ window.__ModuleLoader__.load({
           onAll: on => act('set-all', { kind: 'skills', on }),
           onToggle: (name, on) => act('set-skill', { name, on }),
           render: skillRow,
-        }),
+        })
+      )
+    }
 
-        /* --------------------------------------------------------- models */
+    /** Card `modelsGroups`: rendered behind its own error boundary. */
+    function card$modelsGroups(ctx) {
+
+      const {
+        t, act, busy, status, error, load, copied, onCopy, onKey,
+        channels, sync, plugins, skills, models, modelSections,
+        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
+        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
+        pluginRow, skillRow, modelRow, address, dotClass, stateText,
+      } = ctx
+      return (
         h(
           'div',
           { className: 'msy-card' },
@@ -1046,8 +1307,8 @@ window.__ModuleLoader__.load({
                           index,
                           (name, on) => act('set-model', { name, on }),
                           busy,
-                          onKey,
                           t,
+                          onKey,
                         ),
                       ),
                     ),
@@ -1055,9 +1316,23 @@ window.__ModuleLoader__.load({
                 ),
               ),
           h('div', { className: 'msy-meta' }, t('secretsWarn')),
-        ),
+        )
+      )
+    }
 
-        /* ----------------------------------------------------------- pairing */
+    /** Card `pairing`: rendered behind its own error boundary. */
+    function card$pairing(ctx) {
+
+      const {
+        t, act, busy, status, error, load, copied, onCopy, onKey,
+        channels, sync, plugins, skills, models, modelSections,
+        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
+        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
+        pluginRow, skillRow, modelRow, address, dotClass, stateText,
+      } = ctx
+      // The pairing card owns three stacked panels; they are one card so the
+      // pairing command and its QR never get separated by a failed boundary.
+      return [
         address === undefined
           ? h('div', { className: 'msy-card msy-card-tight' }, h('div', { className: 'msy-empty' }, t('noAddress')))
           : h(
@@ -1111,8 +1386,20 @@ window.__ModuleLoader__.load({
               h('div', { className: 'msy-empty' }, t('adapterHint')),
             )
           : null,
+      ]
+    }
 
-        /* ------------------------------------------------------------- stats */
+    /** Card `stats`: rendered behind its own error boundary. */
+    function card$stats(ctx) {
+
+      const {
+        t, act, busy, status, error, load, copied, onCopy, onKey,
+        channels, sync, plugins, skills, models, modelSections,
+        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
+        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
+        pluginRow, skillRow, modelRow, address, dotClass, stateText,
+      } = ctx
+      return (
         h(
           'div',
           { className: 'msy-card msy-card-tight' },
@@ -1156,9 +1443,21 @@ window.__ModuleLoader__.load({
           status?.sessionsRoot ? h('div', { className: 'msy-path' }, `${t('sessionsRoot')}: ${status.sessionsRoot}`) : null,
           status?.paths?.skills ? h('div', { className: 'msy-path' }, `skills: ${status.paths.skills}`) : null,
           status?.paths?.profile ? h('div', { className: 'msy-path' }, `profile: ${status.paths.profile}`) : null,
-        ),
+        )
+      )
+    }
 
-        /* --------------------------------------------------------------- log */
+    /** Card `log`: rendered behind its own error boundary. */
+    function card$log(ctx) {
+
+      const {
+        t, act, busy, status, error, load, copied, onCopy, onKey,
+        channels, sync, plugins, skills, models, modelSections,
+        peer, workspaces, desktopWorkspaces, phoneWorkspaces, phoneKnown,
+        wsMap, resolveTarget, request, requestState, syncLine, syncButton,
+        pluginRow, skillRow, modelRow, address, dotClass, stateText,
+      } = ctx
+      return (
         h(
           'div',
           { className: 'msy-card msy-card-tight' },
@@ -1177,101 +1476,10 @@ window.__ModuleLoader__.load({
                 ),
               )
             : h('div', { className: 'msy-empty' }, t('noLog')),
-        ),
+        )
       )
     }
 
-    /** The rail icon: a phone with two arrows, sized to whatever the rail asks for. */
-    function Logo(props) {
-      const size = props?.size ?? 16
-      return h(
-        'svg',
-        {
-          width: size,
-          height: size,
-          viewBox: '0 0 16 16',
-          fill: 'none',
-          'aria-hidden': 'true',
-          focusable: 'false',
-        },
-        h('rect', {
-          x: 4.4,
-          y: 1.2,
-          width: 7.2,
-          height: 13.6,
-          rx: 1.8,
-          stroke: 'currentColor',
-          strokeWidth: 1.25,
-        }),
-        h('path', { d: 'M6.6 3.5h2.8', stroke: 'currentColor', strokeWidth: 1.1, strokeLinecap: 'round' }),
-        h('path', {
-          d: 'M6.3 7.2h3.4m0 0-1.1-1.1m1.1 1.1-1.1 1.1',
-          stroke: 'currentColor',
-          strokeWidth: 1.1,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
-        }),
-        h('path', {
-          d: 'M9.7 11.2H6.3m0 0 1.1-1.1M6.3 11.2l1.1 1.1',
-          stroke: 'currentColor',
-          strokeWidth: 1.1,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
-        }),
-      )
-    }
-
-    /* ----------------------------------------------------------------- mount */
-
-    /** Slot services this half needs before it can contribute anything. */
-    const inject = ['slots', 'locale']
-
-    /**
-     * Register the panel and its rail entry.
-     * @param ctx - the browser plugin context.
-     */
-    function apply(ctx) {
-      ctx.effect(() => ctx.locale.register(NS, { zh: DICT.zh, en: DICT.en }), 'mobile-sync: dictionaries')
-      ctx.effect(() => {
-        const style = document.createElement('style')
-        style.setAttribute('data-plugin', 'dsh-mobile-sync')
-        style.textContent = CSS
-        document.head.appendChild(style)
-        return () => style.remove()
-      }, 'mobile-sync: styles')
-
-      const t = ctx.locale.bind(NS)
-      if (ctx.slots === undefined) return
-
-      // `sidebar.panellist` is the rail; registering into it is also what tells
-      // the shell this plugin has a panel worth showing. Both registrations live
-      // together so a shell without a sidebar leaves nothing half-mounted.
-      try {
-        ctx.slots.inject('sidebar.panellist', () => {
-          const offPanel = ctx.slots.register(
-            { name: 'main', key: PANEL_ID, locale: NS, inject: () => ({ t }) },
-            owner => h(Panel, { ...owner, t }),
-          )
-          const offRow = ctx.slots.register(
-            { name: 'sidebar.panellist', id: PANEL_ID, order: 5, label: () => t('nav'), locale: NS },
-            owner => h(Logo, { size: owner?.size ?? 16 }),
-          )
-          return () => {
-            if (typeof offRow === 'function') offRow()
-            if (typeof offPanel === 'function') offPanel()
-          }
-        })
-      } catch (cause) {
-        // A shell without a sidebar still serves the LAN page, which is the
-        // whole feature; losing the panel is a downgrade, not a failure.
-        if (typeof console !== 'undefined') console.warn('[mobile-sync] sidebar unavailable:', cause)
-      }
-    }
-
-    exports.name = 'mobile-sync'
-    exports.inject = inject
-    exports.apply = apply
-    exports.__test = { clock, copyText, size, DICT, SwitchRow, SwitchList, StateTag }
     return module.exports
   },
 })

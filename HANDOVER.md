@@ -1,4 +1,4 @@
-# 交接文档 — dsh-mobile-sync v0.4
+# 交接文档 — dsh-mobile-sync v0.4.1
 
 > 更新于 2026-10-25 01:40。读完这份就能接着干，不需要回看聊天记录。
 > 操作手册见 [docs/USAGE.md](docs/USAGE.md)；v0.3 的现状见文末第 12 节（保留作为历史）；v0.2 在第 12 节末。
@@ -30,7 +30,7 @@ v0.4 新增：
 | 项 | 值 |
 | --- | --- |
 | 仓库/工作区 | `D:\code\dsh-android-Conversation sync` |
-| 包名 | `dsh-mobile-sync` **v0.3.0**（`type: module`） |
+| 包名 | `dsh-mobile-sync` **v0.4.1**（`type: module`） |
 | 桌面 DSH 运行时 | `C:\Users\wangc\AppData\Local\Programs\DeepSeek Harness\resources\app.asar`（0.2.1-rc.2） |
 | 桌面 node（有 zstd） | `C:\Users\wangc\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe`（v24.21.0） |
 | DSH_HOME | `C:\Users\wangc\.dsh`（profile = `desktop`） |
@@ -282,6 +282,29 @@ node tools/panel-probe.mjs C:/Users/wangc/.dsh --text   # 用真实数据把侧�
 12. **不假设 `.env` 可用**：内核按「credentials 存储 → 启动环境 → 项目 `.env` → `$DSH_HOME/.env`」取密钥，
     但桌面/手机的启动器是否真会注入 `.env` 没有实证。所以密钥一律写进 `.credentials.yaml` 的 `refs:`
     （存储优先级最高，热重载），不依赖环境变量。
+### 2.6 面板黑屏（v0.4.1）
+
+真机反馈：侧栏「手机同步」入口在，点开却是**整块黑**。
+
+原因不是渲染逻辑，是**整块面板没有错误边界**：Panel 是一个超长的
+`return h('div', {...}, card, card, ...)`，任何一张卡片里抛错，整棵子树就没了，
+界面上什么也不显示。同时还有两个小 bug 让「坏数据」更容易触发：
+
+- 模型行的两个开关（组开关 + 密钥开关）用了同一个 `aria-label`；
+- 密钥开关的 `onKey` 被塞进了 `translate` 位置，界面上显示 `[object Promise]`。
+
+修法：
+
+1. **每张卡片一个错误边界**（`class Boundary`），面板改成
+   `...guarded(CARDS, ctx)`。一张卡片抛错只会在它自己的位置显示红框和错误信息，
+   其余部分（重试按钮、日志、开关）照常。轮询每刷新一次 status，`syncKey` 变化，
+   边界自动复位再试一次。
+2. 卡片拆成 `card$<key>(ctx)`，统一从 `ctx` 取 `t/act/status/...`。
+3. 模型行的开关改成 `label sync` / `label key` 两个不同名字；`onKey` 作为独立参数传入。
+
+测试：`test/client.mjs` 新增「抛错的卡片被自己的边界兜住」；
+`tools/panel-probe.mjs` 用真实 `$DSH_HOME` 渲染整面板（12 插件 / 2 技能 / 6 模型组 / 5+9 工作区全部渲染）。
+
 ## 9. 坑（都踩过了）
 
 - bundle patch 的 `id:` 行不能有行尾注释，且 `id` 必须等于包名，否则内核 preflight 直接拒绝。

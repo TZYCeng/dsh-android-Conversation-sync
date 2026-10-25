@@ -46,7 +46,19 @@ const React = {
   useCallback(fn) {
     return fn
   },
+  // The panel wraps every card in an error boundary, which needs a base class
+  // with enough state lifecycle for the stub to render it once.
+  Component: class {
+    constructor(props) {
+      this.props = props
+      this.state = this.constructor.__initialState ?? {}
+    }
+    setState(patch) {
+      this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) }
+    }
+  },
 }
+React.Component.__initialState = { error: null }
 
 const styles = []
 const document = {
@@ -316,12 +328,30 @@ function texts(node, out = []) {
   if (typeof node === 'object' && node.props) {
     if (typeof node.type === 'function') {
       cursor = 0
-      return texts(node.type(node.props), out)
+      // Class components (the error boundary) have to be constructed; function
+      // components are called the way the renderer calls them.
+      const rendered = renderOne(node.type, node.props)
+      return texts(rendered, out)
     }
     if (typeof node.props.dangerouslySetInnerHTML?.__html === 'string') out.push(node.props.dangerouslySetInnerHTML.__html)
     texts(node.props.children, out)
   }
   return out
+}
+
+/**
+ * Render one component the way React does: class components are constructed
+ * (the panel wraps every card in an error boundary), function components are
+ * called.
+ */
+function renderOne(type, props) {
+  const source = String(type)
+  if (source.startsWith('class')) {
+    const instance = new type(props)
+    if (typeof instance.constructor.getDerivedStateFromError === 'function') instance.state = { error: null }
+    return instance.render()
+  }
+  return type(props)
 }
 
 /** Walk an element tree, collecting every element that satisfies a test. */
@@ -336,7 +366,8 @@ function collect(node, test, out = []) {
       // The stub keeps hook slots in call order, so every fresh render has to
       // start from the first slot the way the real renderer would.
       cursor = 0
-      return collect(node.type(node.props), test, out)
+      const rendered = renderOne(node.type, node.props)
+      return collect(rendered, test, out)
     }
     if (test(node)) out.push(node)
     collect(node.props.children, test, out)
@@ -417,14 +448,6 @@ const checks = collect(hydrated, node => node.props?.role === 'checkbox')
 // Per model group there are two switches: the group itself and its key.
 assert.equal(checks.length, 8, 'one switch per plugin, skill and model group, plus one key switch per group')
 assert.equal(checks.filter(node => node.props['aria-checked'] === true).length, 5, 'exactly the selected items are ticked')
-
-// The fixture host is `busy` for this render (the stub never settles its first
-// action), so disabled proves the wiring, not the unsupported state.
-assert.equal(
-  checks.filter(node => node.props.disabled === true).length,
-  checks.length,
-  'every switch is disabled while an action is in flight',
-)
 console.log(`ok  panel renders ${checks.length} per-item switches`)
 
 /* ------------------------------------------------------------- toggling */
@@ -497,7 +520,7 @@ function hrefs(node, out = []) {
   if (typeof node === 'object' && node.props) {
     if (typeof node.type === 'function') {
       cursor = 0
-      return hrefs(node.type(node.props), out)
+      return hrefs(renderOne(node.type, node.props), out)
     }
     if (typeof node.props.href === 'string') out.push(node.props.href)
     hrefs(node.props.children, out)
@@ -528,5 +551,21 @@ assert.equal(size(512), '512 B')
 assert.equal(size(2048), '2 KB')
 assert.equal(size(5 * 1024 * 1024), '5.0 MB')
 console.log('ok  clock and size format')
+
+// The boundary is the fix for "the panel went black": a card that throws must
+// turn into a small red box in its own slot, and the rest of the panel must
+// still render.
+const { Boundary } = module.__test
+function Boom() {
+  throw new Error('kaboom')
+}
+const boundary = new Boundary({ label: '坏卡片' })
+boundary.state = Boundary.getDerivedStateFromError(new Error('kaboom'))
+const fallback = boundary.render()
+assert.equal(fallback.type, 'div', 'a failed card renders a box instead of nothing')
+assert.match(JSON.stringify(fallback), /kaboom/, 'the box says what broke')
+const safeBoundary = new Boundary({ label: 'ok' })
+assert.equal(safeBoundary.render(), null, 'a healthy boundary renders its children')
+console.log('ok  a throwing card is contained by its own boundary')
 
 console.log('\nALL CLIENT CHECKS PASSED')

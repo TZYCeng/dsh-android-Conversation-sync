@@ -55,6 +55,17 @@ const React = {
     return hooks[slot]
   },
   useCallback: fn => fn,
+  // The panel guards every card with an error boundary, so the stub needs a
+  // base class with the state lifecycle a class component uses.
+  Component: class {
+    constructor(props) {
+      this.props = props
+      this.state = typeof this.constructor.getDerivedStateFromError === 'function' ? { error: null } : {}
+    }
+    setState(patch) {
+      this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) }
+    }
+  },
 }
 
 const document = {
@@ -121,7 +132,10 @@ function walk(node, out) {
   if (typeof node === 'object' && node.props) {
     if (typeof node.type === 'function') {
       cursor = 0
-      return walk(node.type(node.props), out)
+      const rendered = String(node.type).startsWith('class')
+        ? new node.type(node.props).render()
+        : node.type(node.props)
+      return walk(rendered, out)
     }
     if (typeof node.type === 'string') out.tags[node.type] = (out.tags[node.type] ?? 0) + 1
     if (node.props.dangerouslySetInnerHTML?.__html) out.text.push('<svg>')
